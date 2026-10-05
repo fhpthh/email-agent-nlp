@@ -1,0 +1,21 @@
+# Môi trường ảo & Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+
+# Biến môi trường và bí mật (Bắt buộc phải ignore)
+.env
+*.local
+
+# Dữ liệu & Database cục bộ
+*.sqlite3
+pgdata/
+
+# IDE & OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
