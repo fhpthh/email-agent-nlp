@@ -1,6 +1,8 @@
 import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+
+from src.emailagent.api.routers import sync
 from src.emailagent.config import settings
 
 # Cấu hình log chuẩn tiếng Anh
@@ -37,3 +39,6 @@ async def health_check():
         "app_name": settings.APP_NAME,
         "environment": settings.ENV
     }
+
+
+app.include_router(sync.router)
