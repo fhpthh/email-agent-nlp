@@ -24,6 +24,8 @@ class Settings(BaseSettings):
 
     # Provider đang kích hoạt: 'fake' | 'gmail' | 'outlook'
     ACTIVE_EMAIL_PROVIDER: str = "fake"
+    GMAIL_CREDENTIALS_PATH: str = "credentials.json"
+    GMAIL_TOKEN_PATH: str = "token.json"
 
     # Cấu hình AI & LLM Gateway
     LLM_PROVIDER: str = "gemini"  # 'gemini' hoặc 'openai'
@@ -37,6 +39,11 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore"
     )
+
+    DEFAULT_BACKFILL_DAYS: int = Field(30, description="Default days for history")
+    MAX_BACKFILL_DAYS: int = Field(180, description="Max backfill days")
+    FALLBACK_OWNER_EMAIL: str = Field("use@example.com", description="Email address for fallback owner")
+    FALLBACK_OWNER_NAME: str = Field("Default user", description="Name for fallback owner")
 
 
 # Singleton instance để import dùng chung toàn dự án

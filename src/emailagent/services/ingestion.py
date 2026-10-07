@@ -1,15 +1,14 @@
-from datetime import datetime, timezone, timedelta
-from typing import Dict, Any
-
+import logging
+from datetime import datetime, timedelta, timezone
+from typing import Dict, Any, Optional
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-import logging
 from src.emailagent.adapters.db.repositories import EmailRepository
+from src.emailagent.config import settings
 from src.emailagent.ports.provider import EmailProvider
 from src.emailagent.utils.cleaner import EmailCleaner
 
 logger = logging.getLogger("emailagent.services.ingestion")
-
 
 class IngestionService:
     def __init__(self, provider: EmailProvider, session_factory: async_sessionmaker):
@@ -17,16 +16,36 @@ class IngestionService:
         self.session_factory = session_factory
 
     async def sync_history(
-            self,
-            owner_email: str,
-            owner_name: str,
-            days_back: int = 7) -> Dict[str, Any]:
-        until = datetime.now(timezone.utc)
-        since = until - timedelta(days=days_back)
+        self,
+        days_back: int = settings.DEFAULT_BACKFILL_DAYS,
+        date_from: Optional[datetime] = None,
+        date_to: Optional[datetime] = None
+    ) -> Dict[str, Any]:
+        """Synchronize emails within a dynamic time window."""
+        # 1. Resolve dynamic date range
+        if date_from and date_to:
+            since = date_from
+            until = date_to
+        else:
+            until = datetime.now(timezone.utc)
+            since = until - timedelta(days=days_back)
 
-        logger.info(f"Syncing history from {owner_email} to {owner_name}")
-
+        logger.info(
+            "Initiating email synchronization from %s to %s via provider: %s",
+            since.isoformat(),
+            until.isoformat(),
+            self.provider.provider_name
+        )
         emails, _ = await self.provider.fetch_history(since, until)
+
+        # 2. Resolve account profile (Auto-fetched from provider or fallback)
+        owner_email = settings.FALLBACK_OWNER_EMAIL
+        owner_name = settings.FALLBACK_OWNER_NAME
+        if hasattr(self.provider, "get_profile"):
+            try:
+                owner_email, owner_name = self.provider.get_profile()
+            except Exception as exc:
+                logger.warning("Failed to auto-resolve account profile from provider: %s", exc)
 
         ingested_count = 0
         async with self.session_factory() as session:
@@ -52,9 +71,18 @@ class IngestionService:
                         clean_body=clean_text
                     )
                     ingested_count += 1
-        logger.info(f"Sync history from {owner_email} to {owner_name}")
+
+        logger.info(
+            "Synchronization completed successfully. Persisted %d emails for account %s.",
+            ingested_count,
+            owner_email
+        )
         return {
             "status": "success",
-            "account_id": str(account_id),
-            "ingested_count": ingested_count,
+            "owner_email": owner_email,
+            "date_range": {
+                "since": since.isoformat(),
+                "until": until.isoformat()
+            },
+            "ingested_count": ingested_count
         }
