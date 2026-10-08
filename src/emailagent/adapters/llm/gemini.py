@@ -1,12 +1,12 @@
 import logging
-import types
 from typing import TypeVar, Optional, Type, Sequence
 
 from google import genai
-from openai import BaseModel
+from google.genai import types
+from pydantic import BaseModel
 
-from emailagent.config import settings
-from emailagent.ports.llm import LLMGateway, UntrustedPayload
+from src.emailagent.config import settings
+from src.emailagent.ports.llm import LLMGateway, UntrustedPayload
 
 logger = logging.getLogger("emailagent.adapters.llm.gemini")
 T = TypeVar("T", bound=BaseModel)
@@ -14,15 +14,15 @@ T = TypeVar("T", bound=BaseModel)
 
 class GeminiLLMGateway(LLMGateway):
     def __init__(self, api_key: Optional[str] = None, model_name: Optional[str] = None):
-        self.api_key = api_key or settings.GEMINI_API_KEY
-        self.model_name = model_name or settings.GEMINI_MODEL_NAME
-        self.client = genai.Client(api_key=self.api_key)
+        self._api_key = api_key or settings.GEMINI_API_KEY
+        self._model_name = model_name or settings.LLM_MODEL_NAME
+        self._client = genai.Client(api_key=self._api_key)
 
     async def extract_structured(
-            self,
-            schema: Type[T],
-            system_instruction: str,
-            untrusted_contents: Sequence[UntrustedPayload]
+        self,
+        schema: Type[T],
+        system_instruction: str,
+        untrusted_contents: Sequence[UntrustedPayload]
     ) -> T:
         xml_parts = []
         for item in untrusted_contents:
@@ -52,14 +52,14 @@ class GeminiLLMGateway(LLMGateway):
                 return response.parsed
         return schema.model_validate_json(response.text)
 
-    async def generate_structured(
-            self,
-            prompt: str,
-            system_instruction: Optional[str] = None
+    async def generate_response(
+        self,
+        prompt: str,
+        system_instruction: Optional[str] = None
     ) -> str:
-        response = await self.client.aio.models.generate_content(
-            model=self.model_name,
-            content=prompt,
+        response = await self._client.aio.models.generate_content(
+            model=self._model_name,
+            contents=prompt,
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
                 temperature=0.7,

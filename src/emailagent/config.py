@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     LLM_PROVIDER: str = "gemini"  # 'gemini' hoặc 'openai'
     GEMINI_API_KEY: str = ""
     OPENAI_API_KEY: str = ""
-    LLM_MODEL_NAME: str = "gemini-2.0-flash"
+    LLM_MODEL_NAME: str = "gemini-3.8-flash"
     VECTOR_DIMENSION: int = 768
 
     model_config = SettingsConfigDict(

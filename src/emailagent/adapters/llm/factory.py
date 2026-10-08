@@ -7,7 +7,8 @@ from src.emailagent.ports.llm import LLMGateway
 
 @lru_cache(maxsize=1)
 def get_configured_llm_gateway() -> LLMGateway:
-    provider = settings.LLM_GATEWAY_PROVIDER.lower()
+    provider = settings.LLM_PROVIDER.lower()
+
     if provider == "gemini":
         return GeminiLLMGateway()
     else:

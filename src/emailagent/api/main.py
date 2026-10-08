@@ -2,6 +2,7 @@ import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
+from src.emailagent.api.routers import analysis
 from src.emailagent.api.routers import sync
 from src.emailagent.config import settings
 
@@ -42,3 +43,4 @@ async def health_check():
 
 
 app.include_router(sync.router)
+app.include_router(analysis.router)
