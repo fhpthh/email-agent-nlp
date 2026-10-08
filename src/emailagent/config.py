@@ -45,6 +45,30 @@ class Settings(BaseSettings):
     FALLBACK_OWNER_EMAIL: str = Field("use@example.com", description="Email address for fallback owner")
     FALLBACK_OWNER_NAME: str = Field("Default user", description="Name for fallback owner")
 
+    # --- Vector Memory & Embedding Configuration ---
+    EMBEDDING_PROVIDER: str = Field(
+        "gemini",
+        description="Provider for generating vectors: 'gemini' | 'openai'"
+    )
+    EMBEDDING_MODEL_NAME: str = Field(
+        "text-embedding-004",
+        description="Default Google embedding model"
+    )
+    VECTOR_DIMENSION: int = Field(
+        768,
+        description="Vector dimension matching the database schema (768)"
+    )
+
+    # --- RAG / Chat Assistant Configuration ---
+    RAG_TOP_K: int = Field(
+        5,
+        description="Number of the most semantically similar emails retrieved as context"
+    )
+    RAG_SIMILARITY_THRESHOLD: float = Field(
+        0.65,
+        description="Minimum cosine similarity threshold for considering an email relevant"
+    )
+
 
 # Singleton instance để import dùng chung toàn dự án
 settings = Settings()
