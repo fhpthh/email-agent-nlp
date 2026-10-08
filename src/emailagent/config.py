@@ -46,28 +46,14 @@ class Settings(BaseSettings):
     FALLBACK_OWNER_NAME: str = Field("Default user", description="Name for fallback owner")
 
     # --- Vector Memory & Embedding Configuration ---
-    EMBEDDING_PROVIDER: str = Field(
-        "gemini",
-        description="Provider for generating vectors: 'gemini' | 'openai'"
-    )
-    EMBEDDING_MODEL_NAME: str = Field(
-        "text-embedding-004",
-        description="Default Google embedding model"
-    )
-    VECTOR_DIMENSION: int = Field(
-        768,
-        description="Vector dimension matching the database schema (768)"
-    )
+    # --- Cấu hình Vector Memory & Embedding ---
+    EMBEDDING_PROVIDER: str = Field("gemini", description="Embedding provider: 'gemini' | 'openai'")
+    EMBEDDING_MODEL_NAME: str = Field("text-embedding-004", description="Google text embedding model name")
+    VECTOR_DIMENSION: int = Field(768, description="Vector dimension matching database schema")
 
-    # --- RAG / Chat Assistant Configuration ---
-    RAG_TOP_K: int = Field(
-        5,
-        description="Number of the most semantically similar emails retrieved as context"
-    )
-    RAG_SIMILARITY_THRESHOLD: float = Field(
-        0.65,
-        description="Minimum cosine similarity threshold for considering an email relevant"
-    )
+    # --- Cấu hình RAG / Trợ lý Chat ---
+    RAG_TOP_K: int = Field(5, description="Number of candidate threads to retrieve")
+    RAG_SIMILARITY_THRESHOLD: float = Field(0.60, description="Minimum cosine similarity threshold (0.0 to 1.0)")
 
 
 # Singleton instance để import dùng chung toàn dự án
