@@ -1,4 +1,24 @@
 from datetime import datetime
+from typing import List, Dict, Any
+from uuid import UUID
+
+
+def format_thread_messages_to_xml(thread_id: UUID, emails: List[Dict[str, Any]]) -> str:
+    """Đóng gói các email trong một thread vào thẻ XML chống Prompt Injection."""
+    messages_xml = []
+    for mail in emails:
+        body = mail.get("clean_body") or "(Không có nội dung)"
+        date_str = mail["date_sent"].isoformat() if mail.get("date_sent") else "N/A"
+        messages_xml.append(
+            f'    <untrusted_message id="{mail["id"]}">\n'
+            f'        From: {mail.get("sender")}\n'
+            f'        Date: {date_str}\n'
+            f'        Subject: {mail.get("subject")}\n'
+            f'        Content: {body}\n'
+            f'    </untrusted_message>'
+        )
+    inner_content = "\n".join(messages_xml)
+    return f'<thread id="{str(thread_id)}">\n{inner_content}\n</thread>'
 
 
 def build_analysis_system_instruction(
@@ -7,6 +27,7 @@ def build_analysis_system_instruction(
         owner_name: str,
         timezone_str: str = "Asia/Ho_Chi_Minh",
 ) -> str:
+    """Xây dựng System Instruction có ngữ cảnh người dùng cho LLM Gemini."""
     date_str = reference_date.strftime("%Y-%m-%d (%A)")
 
     return f"""Bạn là Trợ lý AI cấp cao chuyên phân tích và tổng hợp các chuỗi email công việc.
