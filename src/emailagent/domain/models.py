@@ -1,6 +1,10 @@
 from datetime import date, datetime
 from typing import List, Optional
+from uuid import UUID
+
+from google.genai._gaos.types import basemodel
 from pydantic import BaseModel, Field
+
 from src.emailagent.domain.enums import EmailCategory, PriorityLevel
 
 
@@ -33,6 +37,7 @@ class RawEmailMessage(BaseModel):
     body_text: str
     body_html: Optional[str] = None
 
+
 # Kết quả phân tích của 1 thread trong mảng batch
 class ThreadAnalysisItem(BaseModel):
     thread_id: str = Field(..., description="Thread id")
@@ -49,3 +54,51 @@ class BatchThreadInsightModel(BaseModel):
         default_factory=list,
         description="List result analytics for thread"
     )
+
+
+# ============================================================================
+#  VECTOR MEMORY & CHAT Q&A MODELS
+# ============================================================================
+
+class RetrievedThreadContext(BaseModel):
+    """DTO ngữ cảnh luồng thư lấy từ pgvector"""
+    thread_id: UUID
+    subject: str
+    category: str
+    summary: str
+    similarity_score: float = Field(..., description="Cosine similarity score (0.0 to 1.0)")
+    last_message_at: Optional[datetime] = None
+
+
+class CitationItem(BaseModel):
+    """Thông tin trích dẫn nguồn"""
+    thread_id: str = Field(..., description="ID of the referenced thread")
+    subject: str = Field(..., description="Subject of the referenced email")
+    evidence: str = Field(..., description="Verbatim evidence text supporting the statement")
+
+
+class QAGeneratedAnswer(BaseModel):
+    """Kết quả Q&A do LLM sinh ra"""
+    answer: str = Field(..., description="Detailed answer addressing user question")
+    citations: List[CitationItem] = Field(default_factory=list, description="List of source citations used")
+
+
+class ChatQueryRequest(BaseModel):
+    """Request tìm kiếm/hỏi đáp hộp thư"""
+    query: str = Field(..., min_length=2, description="Natural language question about mailbox")
+    account_id: Optional[UUID] = Field(None, description="Optional account ID filter")
+
+
+class ChatQueryResponse(BaseModel):
+    """Response trả lời cho client"""
+    query: str = Field(..., description="Original user question")
+    answer: str = Field(..., description="Grounded answer synthesized by AI Agent")
+    citations: List[CitationItem] = Field(default_factory=list, description="List of verified citations")
+    relevant_threads_count: int = Field(0, description="Number of candidate threads inspected")
+
+
+class ThreadEmbeddingSyncResult(BaseModel):
+    """Kết quả đồng bộ embedding theo batch."""
+    total_found: int = Field(0, description="Total threads needing embeddings")
+    synced: int = Field(0, description="Successfully embedded and saved threads")
+    failed: int = Field(0, description="Failed threads count")
