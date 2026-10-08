@@ -168,7 +168,7 @@ class GmailProvider(EmailProvider):
             cursor: SyncCursor
     ) -> Tuple[List[RawEmailMessage], SyncCursor]:
         """Đồng bộ email mới phát sinh dựa trên historyId của Gmail API."""
-        start_history_id = getattr(cursor, "history_id", None) or getattr(cursor, "value", None)
+        start_history_id = cursor.cursor_value
 
         # Nếu chưa có cursor, lấy historyId hiện tại của hộp thư làm mốc khởi tạo
         if not start_history_id:
@@ -177,8 +177,11 @@ class GmailProvider(EmailProvider):
                 self._service.users().getProfile(userId="me").execute
             )
             current_history_id = profile.get("historyId")
-            updated_cursor = SyncCursor(history_id=current_history_id) if hasattr(cursor, "history_id") else SyncCursor(
-                value=current_history_id)
+            updated_cursor = SyncCursor(
+                account_id=cursor.account_id,
+                cursor_value=str(current_history_id),
+                updated_at=datetime.now(timezone.utc)
+            )
             return [], updated_cursor
 
         try:
@@ -196,9 +199,11 @@ class GmailProvider(EmailProvider):
                     self._service.users().getProfile(userId="me").execute
                 )
                 current_history_id = profile.get("historyId")
-                updated_cursor = SyncCursor(history_id=current_history_id) if hasattr(cursor,
-                                                                                      "history_id") else SyncCursor(
-                    value=current_history_id)
+                updated_cursor = SyncCursor(
+                    account_id=cursor.account_id,
+                    cursor_value=str(current_history_id),
+                    updated_at=datetime.now(timezone.utc)
+                )
                 return [], updated_cursor
             raise
 
