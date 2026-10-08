@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import Sequence, Type, TypeVar, Optional
+
 from pydantic import BaseModel
 
 T = TypeVar("T", bound=BaseModel)
@@ -15,19 +16,19 @@ class UntrustedPayload(BaseModel):
 class LLMGateway(ABC):
     @abstractmethod
     async def extract_structured(
-        self,
-        schema: Type[T],
-        system_instruction: str,
-        untrusted_contents: Sequence[UntrustedPayload]
+            self,
+            schema: Type[T],
+            system_instruction: str,
+            untrusted_contents: Sequence[UntrustedPayload]
     ) -> T:
         """Ép LLM trích xuất dữ liệu trả về đúng schema Pydantic."""
         pass
 
     @abstractmethod
     async def generate_response(
-        self,
-        prompt: str,
-        system_instruction: Optional[str] = None
+            self,
+            prompt: str,
+            system_instruction: Optional[str] = None
     ) -> str:
         """Sinh câu trả lời thông thường cho Agent."""
         pass
