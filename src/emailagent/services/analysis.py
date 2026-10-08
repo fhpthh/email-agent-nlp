@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from src.emailagent.adapters.db.repositories import EmailRepository
 from src.emailagent.config import settings
-from src.emailagent.domain.models import ThreadInsightModel
+from src.emailagent.domain.models import BatchThreadInsightModel
 from src.emailagent.ports.llm import LLMGateway, UntrustedPayload
 from src.emailagent.utils.fingerprint import compute_action_item_fingerprint
 from src.emailagent.utils.prompt import build_analysis_system_instruction
@@ -21,105 +21,134 @@ class ThreadAnalysisService:
             self,
             llm_gateway: LLMGateway,
             session_factory: async_sessionmaker,
-            concurrency_limit: int = 3
+            concurrency_limit: int = 2
     ):
         self.llm = llm_gateway
         self.session_factory = session_factory
         self.semaphore = asyncio.Semaphore(concurrency_limit)
 
-    async def analyze_thread(self, thread_id: UUID) -> Dict[str, Any]:
-        """Phân tích một chuỗi hội thoại đơn lẻ bằng LLM."""
-        async with self.semaphore:
-            async with self.session_factory() as session:
-                repo = EmailRepository(session)
-                emails = await repo.get_thread_emails(thread_id)
+    async def _process_single_batch(
+            self,
+            thread_ids: List[UUID],
+            owner_email: str,
+            owner_name: str,
+            timezone_str: str
+    ) -> List[Dict[str, Any]]:
+        """Xử lý 1 mảng gồm nhiều thread (tối đa 5 threads) trong DUY NHẤT 1 lần gọi Gemini."""
+        async with self.session_factory() as session:
+            repo = EmailRepository(session)
 
+            # 1. Thu thập emails của tất cả threads trong batch
+            thread_payloads_xml = []
+            threads_pending_map = {}
+            reference_date = datetime.now(timezone.utc)
+
+            for tid in thread_ids:
+                emails = await repo.get_thread_emails(tid)
                 if not emails:
-                    logger.warning("No emails found for thread %s", thread_id)
-                    return {"thread_id": str(thread_id), "status": "skipped", "reason": "empty_thread"}
+                    continue
 
-                #  Chuẩn bị payload an toàn từ các email trong thread
-                payloads: List[UntrustedPayload] = []
-                pending_email_ids: List[UUID] = []
-                latest_date = emails[-1]["date_sent"]
+                pending_ids = [m["id"] for m in emails if m["status"] == "PENDING"]
+                threads_pending_map[str(tid)] = pending_ids
+                reference_date = emails[-1]["date_sent"] or reference_date
 
+                # Đóng gói từng message vào trong thẻ <thread>
+                messages_xml = []
                 for mail in emails:
-                    if mail["status"] == "PENDING":
-                        pending_email_ids.append(mail["id"])
-
-                    body_snippet = mail["clean_body"] or "(Không có nội dung)"
-                    formatted_msg = (
-                        f"From: {mail['sender']}\n"
-                        f"Date: {mail['date_sent'].isoformat()}\n"
-                        f"Subject: {mail['subject']}\n"
-                        f"Content:\n{body_snippet}"
+                    body = mail["clean_body"] or "(Không có nội dung)"
+                    messages_xml.append(
+                        f'    <untrusted_message id="{mail["id"]}">\n'
+                        f'        From: {mail["sender"]}\n'
+                        f'        Date: {mail["date_sent"].isoformat()}\n'
+                        f'        Subject: {mail["subject"]}\n'
+                        f'        Content: {body}\n'
+                        f'    </untrusted_message>'
                     )
-                    payloads.append(UntrustedPayload(content_id=str(mail["id"]), text=formatted_msg))
+                all_msgs_str = "\n".join(messages_xml)
+                thread_payloads_xml.append(f'<thread id="{str(tid)}">\n{all_msgs_str}\n</thread>')
 
-                #  Lấy thông tin chủ hộp thư thật từ DB
-                account_info = await repo.get_thread_account_info(thread_id)
-                owner_email = account_info["email_address"] if account_info else settings.FALLBACK_OWNER_EMAIL
-                owner_name = account_info["owner_name"] if account_info else settings.FALLBACK_OWNER_NAME
-                timezone_str = account_info["timezone"] if account_info else settings.DEFAULT_TIMEZONE
+            if not thread_payloads_xml:
+                return []
 
-                # Truyền email và tên thật vào Prompt
-                system_instruction = build_analysis_system_instruction(
-                    reference_date=latest_date or datetime.now(timezone.utc),
-                    owner_email=owner_email,
-                    owner_name=owner_name,
-                    timezone_str=timezone_str
-                )
+            # 2. Xây dựng prompt và gọi Gemini 1 LẦN DUY NHẤT
+            system_instruction = build_analysis_system_instruction(
+                reference_date=reference_date,
+                owner_email=owner_email,
+                owner_name=owner_name,
+                timezone_str=timezone_str
+            )
+            combined_content = "\n\n".join(thread_payloads_xml)
+            payload = [UntrustedPayload(content_id="batch_chunk", text=combined_content)]
 
-                # Gọi Gemini LLM với Native Structured Output
-                logger.info("Analyzing thread %s (%d messages) via LLM...", thread_id, len(payloads))
-                insight: ThreadInsightModel = await self.llm.extract_structured(
-                    schema=ThreadInsightModel,
-                    system_instruction=system_instruction,
-                    untrusted_contents=payloads
-                )
+            logger.info("Calling Gemini for batch of %d threads...", len(thread_payloads_xml))
+            batch_result: BatchThreadInsightModel = await self.llm.extract_structured(
+                schema=BatchThreadInsightModel,
+                system_instruction=system_instruction,
+                untrusted_contents=payload
+            )
 
-                #  Chuẩn bị Action Items với mã hash fingerprint
+            # 3. Lưu kết quả của từng thread trong batch vào PostgreSQL
+            batch_summary = []
+            for item in batch_result.threads:
+                tid_str = item.thread_id
+                tid_uuid = UUID(tid_str)
+                pending_ids = threads_pending_map.get(tid_str, [])
+
                 action_items_data = []
-                for item in insight.action_items:
-                    fp = compute_action_item_fingerprint(task=item.task, deadline=item.deadline)
+                for act in item.action_items:
+                    fp = compute_action_item_fingerprint(task=act.task, deadline=act.deadline)
                     action_items_data.append({
-                        "task": item.task,
-                        "assignee": item.assignee,
-                        "deadline": item.deadline,
-                        "priority": item.priority.value,
-                        "evidence": item.evidence,
+                        "task": act.task,
+                        "assignee": act.assignee,
+                        "deadline": act.deadline,
+                        "priority": act.priority.value,
+                        "evidence": act.evidence,
                         "fingerprint": fp
                     })
 
-                # Lưu vào PostgreSQL trong 1 Transaction nguyên khối (@Transactional)
-                async with session.begin():
-                    await repo.save_thread_insight_and_action_items(
-                        thread_id=thread_id,
-                        summary=insight.summary,
-                        category=insight.category.value,
-                        is_urgent=insight.is_urgent,
-                        needs_reply=insight.needs_reply,
-                        action_items=action_items_data,
-                        processed_email_ids=pending_email_ids
-                    )
-
-                logger.info(
-                    "Thread %s processed successfully: Category=%s, Urgent=%s, Tasks=%d",
-                    thread_id, insight.category.value, insight.is_urgent, len(action_items_data)
+                await repo.save_thread_insight_and_action_items(
+                    thread_id=tid_uuid,
+                    summary=item.summary,
+                    category=item.category.value,
+                    is_urgent=item.is_urgent,
+                    needs_reply=item.needs_reply,
+                    action_items=action_items_data,
+                    processed_email_ids=pending_ids
                 )
 
-                return {
-                    "thread_id": str(thread_id),
+                batch_summary.append({
+                    "thread_id": tid_str,
                     "status": "success",
-                    "category": insight.category.value,
-                    "is_urgent": insight.is_urgent,
-                    "needs_reply": insight.needs_reply,
-                    "summary": insight.summary,
+                    "category": item.category.value,
+                    "is_urgent": item.is_urgent,
+                    "needs_reply": item.needs_reply,
+                    "summary": item.summary,
                     "action_items_count": len(action_items_data)
-                }
+                })
 
-    async def process_pending_threads(self, limit: int = 20) -> Dict[str, Any]:
-        """Quét và phân tích toàn bộ các thread đang có email PENDING."""
+            await session.commit()
+            return batch_summary
+
+
+    async def analyze_thread(self, thread_id: UUID) -> Dict[str, Any]:
+        """Phân tích một chuỗi hội thoại đơn lẻ bằng cách gọi batch 1 thread."""
+        async with self.session_factory() as session:
+            repo = EmailRepository(session)
+            account_info = await repo.get_thread_account_info(thread_id)
+            owner_email = account_info["email_address"] if account_info else settings.FALLBACK_OWNER_EMAIL
+            owner_name = account_info["owner_name"] if account_info else settings.FALLBACK_OWNER_NAME
+            timezone_str = account_info["timezone"] if account_info else settings.DEFAULT_TIMEZONE
+
+        results = await self._process_single_batch(
+            thread_ids=[thread_id],
+            owner_email=owner_email,
+            owner_name=owner_name,
+            timezone_str=timezone_str
+        )
+        return results[0] if results else {"thread_id": str(thread_id), "status": "skipped"}
+
+    async def process_pending_threads(self, limit: int = 15, batch_size: int = 5) -> Dict[str, Any]:
+        """Quét và gom nhóm các thread thành từng cụm batch 5 threads để phân tích nhanh và tiết kiệm quota."""
         async with self.session_factory() as session:
             repo = EmailRepository(session)
             threads = await repo.get_threads_with_pending_emails(limit=limit)
@@ -128,29 +157,46 @@ class ThreadAnalysisService:
             logger.info("No pending threads to process.")
             return {"status": "success", "processed_threads": 0, "details": []}
 
-        logger.info("Found %d pending threads to analyze. Starting batch...", len(threads))
+        # Lấy thông tin tài khoản của thread đầu tiên làm mốc
+        account_info = await repo.get_thread_account_info(threads[0]["id"])
+        owner_email = account_info["email_address"] if account_info else settings.FALLBACK_OWNER_EMAIL
+        owner_name = account_info["owner_name"] if account_info else settings.FALLBACK_OWNER_NAME
+        timezone_str = account_info["timezone"] if account_info else settings.DEFAULT_TIMEZONE
 
-        # Chạy song song có kiểm soát bởi Semaphore
-        tasks = [self.analyze_thread(t["id"]) for t in threads]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        thread_ids = [t["id"] for t in threads]
+        # Chia nhỏ danh sách thread thành các cụm batch_size (mỗi cụm 5 thread)
+        chunks = [thread_ids[i:i + batch_size] for i in range(0, len(thread_ids), batch_size)]
+        logger.info(
+            "Processing %d threads split into %d batch chunks (batch_size=%d)...",
+            len(threads), len(chunks), batch_size
+        )
 
+        all_details = []
         succeeded = 0
         failed = 0
-        details = []
 
-        for r in results:
-            if isinstance(r, Exception):
-                failed += 1
-                logger.error("Error analyzing thread: %s", r)
-                details.append({"status": "failed", "error": str(r)})
-            else:
-                succeeded += 1
-                details.append(r)
+        for chunk in chunks:
+            try:
+                results = await self._process_single_batch(
+                    thread_ids=chunk,
+                    owner_email=owner_email,
+                    owner_name=owner_name,
+                    timezone_str=timezone_str
+                )
+                all_details.extend(results)
+                succeeded += len(results)
+                await asyncio.sleep(1)
+            except Exception as exc:
+                failed += len(chunk)
+                logger.error("Failed to process batch chunk %s: %s", chunk, exc)
+                for tid in chunk:
+                    all_details.append({"thread_id": str(tid), "status": "failed", "error": str(exc)})
 
         return {
             "status": "completed",
             "total_threads": len(threads),
+            "total_api_calls": len(chunks),
             "succeeded": succeeded,
             "failed": failed,
-            "details": details
+            "details": all_details
         }

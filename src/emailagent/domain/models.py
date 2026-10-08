@@ -32,3 +32,20 @@ class RawEmailMessage(BaseModel):
     date_sent: datetime
     body_text: str
     body_html: Optional[str] = None
+
+# Kết quả phân tích của 1 thread trong mảng batch
+class ThreadAnalysisItem(BaseModel):
+    thread_id: str = Field(..., description="Thread id")
+    category: EmailCategory = Field(..., description="Classified email category")
+    is_urgent: bool = Field(False, description="Requires immediate same-day attention")
+    needs_reply: bool = Field(False, description="Waiting for user response")
+    summary: str = Field(..., description="2-3 sentence executive summary")
+    action_items: List[ActionItemModel] = Field(default_factory=list, description="Extracted action items")
+
+
+# DTO tổng bọc danh sách các thread gửi lên 1 lần
+class BatchThreadInsightModel(BaseModel):
+    threads: List[ThreadAnalysisItem] = Field(
+        default_factory=list,
+        description="List result analytics for thread"
+    )
