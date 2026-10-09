@@ -14,9 +14,15 @@ def _build_fake_provider() -> EmailProvider:
 
 def _build_gmail_provider() -> EmailProvider:
     from src.emailagent.adapters.provider.gmail import GmailProvider
+    from src.emailagent.config import PROJECT_ROOT
 
     creds_path = Path(settings.GMAIL_CREDENTIALS_PATH)
+    if not creds_path.is_absolute():
+        creds_path = PROJECT_ROOT / creds_path
+
     token_path = Path(settings.GMAIL_TOKEN_PATH)
+    if not token_path.is_absolute():
+        token_path = PROJECT_ROOT / token_path
 
     if not creds_path.exists() and not token_path.exists():
         raise FileNotFoundError(

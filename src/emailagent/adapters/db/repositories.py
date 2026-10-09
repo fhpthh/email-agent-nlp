@@ -255,7 +255,7 @@ class EmailRepository:
         return [
             RetrievedThreadContext(
                 thread_id=row.thread_id,
-                subject=row.subject or "(Không có tiêu đề)",
+                subject=row.subject or "(No title)",
                 category=row.category or "uncategorized",
                 summary=row.summary or "",
                 similarity_score=float(row.similarity_score),
@@ -263,3 +263,76 @@ class EmailRepository:
             )
             for row in rows
         ]
+
+    async def get_action_items(
+            self,
+            account_id: Optional[UUID] = None,
+            status: str = "open",
+            priority: Optional[str] = None,
+            due_before: Optional[str] = None,
+            limit: int = 20
+    ) -> List[dict]:
+        """Truy vấn danh sách công việc (action items) đã được NLP trích xuất."""
+        conditions = ["a.status = :status"]
+        params: dict = {"status": status, "limit": limit}
+        if account_id:
+            conditions.append("t.account_id = :account_id")
+            params["account_id"] = account_id
+        if priority:
+            conditions.append("a.priority = :priority")
+            params["priority"] = priority
+        if due_before:
+            conditions.append("a.deadline <= :due_before")
+            params["due_before"] = due_before
+        where_clause = " AND ".join(conditions)
+        query = text(f"""
+            SELECT 
+                a.id,
+                a.task,
+                a.assignee,
+                a.deadline,
+                a.priority,
+                a.evidence,
+                a.status,
+                t.id AS thread_id,
+                t.subject AS thread_subject
+            FROM action_items a
+            JOIN threads t ON t.id = a.thread_id
+            WHERE {where_clause}
+            ORDER BY a.deadline ASC NULLS LAST, a.created_at DESC
+            LIMIT :limit;
+        """)
+        result = await self._session.execute(query, params)
+        return [dict(row._mapping) for row in result.fetchall()]
+
+    async def get_urgent_threads(
+            self,
+            account_id: Optional[UUID] = None,
+            needs_reply_only: bool = False,
+            limit: int = 10
+    ) -> List[dict]:
+        """Truy vấn các chuỗi email khẩn cấp hoặc cần người dùng trả lời."""
+        conditions = ["(t.is_urgent = TRUE OR t.needs_reply = TRUE)"]
+        params: dict = {"limit": limit}
+        if account_id:
+            conditions.append("t.account_id = :account_id")
+            params["account_id"] = account_id
+        if needs_reply_only:
+            conditions.append("t.needs_reply = TRUE")
+        where_clause = " AND ".join(conditions)
+        query = text(f"""
+            SELECT 
+                t.id,
+                t.subject,
+                t.category,
+                t.summary,
+                t.is_urgent,
+                t.needs_reply,
+                t.last_message_at
+            FROM threads t
+            WHERE {where_clause}
+            ORDER BY t.last_message_at DESC
+            LIMIT :limit;
+        """)
+        result = await self._session.execute(query, params)
+        return [dict(row._mapping) for row in result.fetchall()]

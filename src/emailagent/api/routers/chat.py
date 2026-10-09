@@ -36,7 +36,7 @@ def get_qa_service(
     )
 
 
-@router.post("/sync-embeddings", response_model=ThreadEmbeddingSyncResult, summary="Đồng bộ vector cho các thread chưa có embedding")
+@router.post("/sync-embeddings", response_model=ThreadEmbeddingSyncResult, summary="Sync vector for thread don't have embedding")
 async def sync_embeddings(
         limit: int = 50,
         batch_size: int = 10,
@@ -46,7 +46,7 @@ async def sync_embeddings(
     return await service.sync_pending_embeddings(limit=limit, batch_size=batch_size)
 
 
-@router.post("/ask", response_model=ChatQueryResponse, summary="Hỏi đáp thông minh về hộp thư cá nhân")
+@router.post("/ask", response_model=ChatQueryResponse, summary="Q&A email")
 async def ask_mailbox(
         request: ChatQueryRequest,
         service: MailboxQAService = Depends(get_qa_service)

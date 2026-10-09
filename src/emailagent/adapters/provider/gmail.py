@@ -2,7 +2,7 @@ import asyncio
 import base64
 import email.utils
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -101,6 +101,8 @@ class GmailProvider(EmailProvider):
             date_sent = datetime.now(timezone.utc)
 
         body_text, body_html = self._extract_body(payload)
+        labels = msg.get("labelIds", [])
+        is_unread = "UNREAD" in labels
 
         return RawEmailMessage(
             provider_message_id=msg_id,
@@ -111,6 +113,7 @@ class GmailProvider(EmailProvider):
             date_sent=date_sent,
             body_text=body_text or subject,
             body_html=body_html,
+            is_unread=is_unread,
         )
 
     def _fetch_message_sync(self, msg_id: str) -> Optional[RawEmailMessage]:
@@ -134,7 +137,9 @@ class GmailProvider(EmailProvider):
     ) -> Tuple[List[RawEmailMessage], Optional[str]]:
         """Lấy danh sách email cũ theo khoảng ngày từ Gmail API (Non-blocking & Concurrent)."""
         after_str = since.strftime("%Y/%m/%d")
-        before_str = until.strftime("%Y/%m/%d")
+        # Gmail "before:YYYY/MM/DD" tính từ 00:00 của ngày đó. 
+        # Để lấy trọn vẹn email đến hiện tại của ngày until, cộng thêm 1 ngày.
+        before_str = (until + timedelta(days=1)).strftime("%Y/%m/%d")
         query_str = f"after:{after_str} before:{before_str}"
 
         logger.info("Querying Gmail messages with query: %s", query_str)

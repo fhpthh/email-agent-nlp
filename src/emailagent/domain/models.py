@@ -36,6 +36,7 @@ class RawEmailMessage(BaseModel):
     date_sent: datetime
     body_text: str
     body_html: Optional[str] = None
+    is_unread: bool = False
 
 
 # Kết quả phân tích của 1 thread trong mảng batch
