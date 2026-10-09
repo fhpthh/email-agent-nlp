@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+from src.emailagent.config import settings
 from src.emailagent.domain.models import RawEmailMessage
 from src.emailagent.ports.provider import EmailProvider, SyncCursor
 
@@ -55,3 +56,7 @@ class FakeEmailProvider(EmailProvider):
             updated_at=datetime.now(timezone.utc)
         )
         return [], new_cursor
+
+    def get_profile(self) -> Tuple[str, str]:
+        """Trả về thông tin mặc định cho fake provider."""
+        return settings.FALLBACK_OWNER_EMAIL, settings.FALLBACK_OWNER_NAME

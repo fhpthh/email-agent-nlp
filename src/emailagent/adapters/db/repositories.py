@@ -3,7 +3,7 @@ from typing import List, Optional
 from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.emailagent.domain.models import RawEmailMessage
+from src.emailagent.domain.models import RawEmailMessage, RetrievedThreadContext
 
 logger = logging.getLogger("emailagent.db.repository")
 
@@ -178,3 +178,88 @@ class EmailRepository:
         result = await self._session.execute(query, {"thread_id": thread_id})
         row = result.fetchone()
         return dict(row._mapping) if row else None
+
+    async def get_threads_missing_embeddings(self, limit: int = 50) -> List[dict]:
+        """Fetch threads that have summaries but lack vector embeddings."""
+        query = text("""
+            SELECT id, subject, category, summary
+            FROM threads
+            WHERE summary IS NOT NULL
+              AND embedding IS NULL
+            ORDER BY created_at DESC
+            LIMIT :limit;
+        """)
+        result = await self._session.execute(query, {"limit": limit})
+        return [dict(row._mapping) for row in result.fetchall()]
+
+    async def update_thread_embedding(self, thread_id: UUID, embedding: List[float]) -> None:
+        """Update pgvector column for a specific thread."""
+        vector_str = f"[{','.join(f'{x:.6f}' for x in embedding)}]"
+        # Dùng CAST(:embedding AS vector) thay cho :embedding::vector
+        query = text("""
+                     UPDATE threads
+                     SET embedding = CAST(:embedding AS vector)
+                     WHERE id = :thread_id;
+                     """)
+        await self._session.execute(query, {
+            "thread_id": thread_id,
+            "embedding": vector_str
+        })
+
+    async def search_similar_threads(
+            self,
+            query_embedding: List[float],
+            account_id: Optional[UUID] = None,
+            top_k: int = 5,
+            threshold: float = 0.60
+    ) -> List[RetrievedThreadContext]:
+        """Perform cosine similarity search on threads using pgvector <=> operator."""
+        vector_str = f"[{','.join(f'{x:.6f}' for x in query_embedding)}]"
+
+        # 1. Khởi tạo danh sách điều kiện WHERE mặc định
+        conditions = [
+            "t.embedding IS NOT NULL",
+            "(1 - (t.embedding <=> CAST(:query_vector AS vector))) >= :threshold"
+        ]
+
+        params: dict = {
+            "query_vector": vector_str,
+            "threshold": threshold,
+            "top_k": top_k
+        }
+
+        # 2. Chỉ bổ sung điều kiện lọc account_id khi có giá trị truyền vào (tránh AmbiguousParameterError)
+        if account_id is not None:
+            conditions.append("t.account_id = :account_id")
+            params["account_id"] = account_id
+
+        where_clause = " AND ".join(conditions)
+
+        # 3. Lắp ráp câu truy vấn SQL động
+        query = text(f"""
+            SELECT 
+                t.id AS thread_id,
+                t.subject,
+                t.category,
+                t.summary,
+                t.last_message_at,
+                (1 - (t.embedding <=> CAST(:query_vector AS vector))) AS similarity_score
+            FROM threads t
+            WHERE {where_clause}
+            ORDER BY similarity_score DESC
+            LIMIT :top_k;
+        """)
+
+        result = await self._session.execute(query, params)
+        rows = result.fetchall()
+        return [
+            RetrievedThreadContext(
+                thread_id=row.thread_id,
+                subject=row.subject or "(Không có tiêu đề)",
+                category=row.category or "uncategorized",
+                summary=row.summary or "",
+                similarity_score=float(row.similarity_score),
+                last_message_at=row.last_message_at
+            )
+            for row in rows
+        ]

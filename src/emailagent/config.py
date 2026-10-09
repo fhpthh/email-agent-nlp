@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     # --- Vector Memory & Embedding Configuration ---
     # --- Cấu hình Vector Memory & Embedding ---
     EMBEDDING_PROVIDER: str = Field("gemini", description="Embedding provider: 'gemini' | 'openai'")
-    EMBEDDING_MODEL_NAME: str = Field("text-embedding-004", description="Google text embedding model name")
+    EMBEDDING_MODEL_NAME: str = Field("gemini-embedding-001", description="Google text embedding model name")
     VECTOR_DIMENSION: int = Field(768, description="Vector dimension matching database schema")
 
     # --- Cấu hình RAG / Trợ lý Chat ---

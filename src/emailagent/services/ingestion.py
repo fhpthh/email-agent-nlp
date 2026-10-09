@@ -39,13 +39,12 @@ class IngestionService:
         emails, _ = await self.provider.fetch_history(since, until)
 
         # 2. Resolve account profile (Auto-fetched from provider or fallback)
-        owner_email = settings.FALLBACK_OWNER_EMAIL
-        owner_name = settings.FALLBACK_OWNER_NAME
-        if hasattr(self.provider, "get_profile"):
-            try:
-                owner_email, owner_name = self.provider.get_profile()
-            except Exception as exc:
-                logger.warning("Failed to auto-resolve account profile from provider: %s", exc)
+        try:
+            owner_email, owner_name = self.provider.get_profile()
+        except Exception as exc:
+            logger.warning("Failed to resolve account profile from provider, using fallback: %s", exc)
+            owner_email = settings.FALLBACK_OWNER_EMAIL
+            owner_name = settings.FALLBACK_OWNER_NAME
 
         ingested_count = 0
         async with self.session_factory() as session:

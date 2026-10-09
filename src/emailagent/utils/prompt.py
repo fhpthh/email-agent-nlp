@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from uuid import UUID
 
 
@@ -32,6 +32,7 @@ def build_analysis_system_instruction(
 
     return f"""Bạn là Trợ lý AI cấp cao chuyên phân tích và tổng hợp các chuỗi email công việc.
 
+
 THÔNG TIN NGƯỜI DÙNG HIỆN TẠI (CHỦ HỘP THƯ):
 - Tên người dùng: {owner_name}
 - Địa chỉ email: {owner_email}
@@ -59,4 +60,70 @@ Với TỪNG <thread id="...">, hãy phân tích độc lập và trả về đ�
    - deadline: Quy đổi ngày tương đối ("sáng mai", "thứ 6") thành YYYY-MM-DD dựa trên MỐC THỜI GIAN THAM CHIẾU ({date_str}). Không rõ ghi null.
    - priority: 'high', 'medium', hoặc 'low'.
    - evidence: Câu trích dẫn nguyên văn ngắn làm bằng chứng.
+"""
+
+
+from src.emailagent.domain.models import RetrievedThreadContext
+
+
+def build_thread_embedding_text(
+        subject: str,
+        category: str,
+        summary: str,
+        action_items: Optional[List[str]] = None
+) -> str:
+    """Generate dense searchable representation of a thread for vector embedding."""
+    tasks_block = f"\nNhiệm vụ: {'; '.join(action_items)}" if action_items else ""
+    return (
+        f"Tiêu đề: {subject}\n"
+        f"Phân loại: {category}\n"
+        f"Nội dung chính: {summary}"
+        f"{tasks_block}"
+    ).strip()
+
+
+def build_qa_system_instruction(
+        reference_date: datetime,
+        owner_name: str,
+        owner_email: str,
+        retrieved_contexts: List[RetrievedThreadContext],
+        timezone_str: str = "Asia/Ho_Chi_Minh"
+) -> str:
+    """Build grounded system instruction for Mailbox Q&A Agent."""
+    date_str = reference_date.strftime("%Y-%m-%d (%A)")
+
+    # Đóng gói ngữ cảnh các thread tìm thấy vào thẻ XML an toàn
+    contexts_xml = []
+    for ctx in retrieved_contexts:
+        contexts_xml.append(
+            f'    <retrieved_thread id="{str(ctx.thread_id)}">\n'
+            f'        Subject: {ctx.subject}\n'
+            f'        Category: {ctx.category}\n'
+            f'        Summary: {ctx.summary}\n'
+            f'        SimilarityScore: {ctx.similarity_score:.2f}\n'
+            f'    </retrieved_thread>'
+        )
+    contexts_block = "\n".join(contexts_xml)
+
+    return f"""Bạn là Trợ lý AI Thông minh chuyên trách trả lời các câu hỏi về Hộp thư cá nhân.
+
+THÔNG TIN NGƯỜI DÙNG HIỆN TẠI (CHỦ HỘP THƯ):
+- Tên người dùng: {owner_name}
+- Địa chỉ email: {owner_email}
+- Thời điểm hiện tại: {date_str} (Múi giờ: {timezone_str})
+
+CÁC EMAIL LIÊN QUAN ĐƯỢC TÌM THẤY TỪ HỘP THƯ (NGỮ CẢNH):
+<context>
+{contexts_block}
+</context>
+
+QUY TẮC PHẢN HỒI BẮT BUỘC (GROUNDED REASONING):
+1. Tính xác thực tuyệt đối: Bạn CHỈ ĐƯỢC PHÉP trả lời dựa trên thông tin có trong thẻ <context> ở trên. Tuyệt đối không bịa đặt (No Hallucination).
+2. Nếu ngữ cảnh không có thông tin liên quan đến câu hỏi: Hãy trả lời lịch sự rằng bạn không tìm thấy email nào liên quan trong hộp thư.
+3. Trích dẫn bằng chứng (Citations):
+   - Với mỗi khẳng định quan trọng, hãy ghi rõ trích dẫn vào mảng `citations`:
+     + `thread_id`: ID của chuỗi email.
+     + `subject`: Tiêu đề email.
+     + `evidence`: Câu trích dẫn ngắn làm bằng chứng từ bản tóm tắt email.
+4. Ngôn ngữ: Trả lời tự nhiên, rõ ràng, chuyên nghiệp bằng tiếng Việt.
 """
