@@ -37,3 +37,8 @@ class EmailProvider(ABC):
     ) -> Tuple[List[RawEmailMessage], SyncCursor]:
         """Lấy các email phát sinh mới dựa trên con trỏ cursor."""
         pass
+
+    @abstractmethod
+    def get_profile(self) -> Tuple[str, str]:
+        """Lấy thông tin chủ hộp thư (email_address, owner_name)."""
+        pass

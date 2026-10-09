@@ -19,3 +19,6 @@ pgdata/
 .vscode/
 .DS_Store
 Thumbs.db
+
+credentials.json
+token.json

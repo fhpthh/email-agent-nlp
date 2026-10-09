@@ -1,5 +1,9 @@
+from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+ENV_FILE = PROJECT_ROOT / ".env"
 
 
 # Quản lý cấu hình tập trung từ biến môi trường
@@ -24,19 +28,36 @@ class Settings(BaseSettings):
 
     # Provider đang kích hoạt: 'fake' | 'gmail' | 'outlook'
     ACTIVE_EMAIL_PROVIDER: str = "fake"
+    GMAIL_CREDENTIALS_PATH: str = "credentials.json"
+    GMAIL_TOKEN_PATH: str = "token.json"
 
     # Cấu hình AI & LLM Gateway
     LLM_PROVIDER: str = "gemini"  # 'gemini' hoặc 'openai'
     GEMINI_API_KEY: str = ""
     OPENAI_API_KEY: str = ""
-    LLM_MODEL_NAME: str = "gemini-2.0-flash"
+    LLM_MODEL_NAME: str = "gemini-3.8-flash"
     VECTOR_DIMENSION: int = 768
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=ENV_FILE,
         env_file_encoding="utf-8",
         extra="ignore"
     )
+
+    DEFAULT_BACKFILL_DAYS: int = Field(30, description="Default days for history")
+    MAX_BACKFILL_DAYS: int = Field(180, description="Max backfill days")
+    FALLBACK_OWNER_EMAIL: str = Field("use@example.com", description="Email address for fallback owner")
+    FALLBACK_OWNER_NAME: str = Field("Default user", description="Name for fallback owner")
+
+    # --- Vector Memory & Embedding Configuration ---
+    # --- Cấu hình Vector Memory & Embedding ---
+    EMBEDDING_PROVIDER: str = Field("gemini", description="Embedding provider: 'gemini' | 'openai'")
+    EMBEDDING_MODEL_NAME: str = Field("gemini-embedding-001", description="Google text embedding model name")
+    VECTOR_DIMENSION: int = Field(768, description="Vector dimension matching database schema")
+
+    # --- Cấu hình RAG / Trợ lý Chat ---
+    RAG_TOP_K: int = Field(5, description="Number of candidate threads to retrieve")
+    RAG_SIMILARITY_THRESHOLD: float = Field(0.60, description="Minimum cosine similarity threshold (0.0 to 1.0)")
 
 
 # Singleton instance để import dùng chung toàn dự án
