@@ -69,8 +69,14 @@ class Settings(BaseSettings):
     RAG_MAX_MESSAGES_PER_THREAD: int = Field(3,
                                              description="Maximum recent messages to fetch per thread for detail grounding")
 
+    SCHEDULER_ENABLED: bool = Field(default=True, description="Enables scheduler mode")
+    SCHEDULER_INTERVAL_MINUTES: int = Field(default=30, description="Minimum number of minutes to run scheduler")
+    SCHEDULER_JOB_ID: str = Field(default="email_sync_worker", description="Job id for scheduler mode")
+    SCHEDULER_DAYS_BACK: int = Field(default=1, description="Number of days to backfill")
+    SCHEDULER_BATCH_LIMIT: int = Field(default=15)
+    SCHEDULER_CHUNK_SIZE: int = Field(default=5)
 
-# Singleton instance để import dùng chung toàn dự án
+
 settings = Settings()
 
 client = AsyncOpenAI(
