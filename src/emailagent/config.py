@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 
 from openai import AsyncOpenAI
@@ -64,6 +63,12 @@ class Settings(BaseSettings):
 
     RAG_TOP_K: int = Field(5, description="Number of candidate threads to retrieve")
     RAG_SIMILARITY_THRESHOLD: float = Field(0.60, description="Minimum cosine similarity threshold (0.0 to 1.0)")
+
+    RAG_MIN_FALLBACK_THRESHOLD: float = Field(0.40,
+                                              description="Fallback similarity threshold when strict search yields no results")
+    RAG_MAX_MESSAGES_PER_THREAD: int = Field(3,
+                                             description="Maximum recent messages to fetch per thread for detail grounding")
+
 
 # Singleton instance để import dùng chung toàn dự án
 settings = Settings()

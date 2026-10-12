@@ -89,18 +89,30 @@ def build_qa_system_instruction(
         retrieved_contexts: List[RetrievedThreadContext],
         timezone_str: str = "Asia/Ho_Chi_Minh"
 ) -> str:
-    """Build grounded system instruction for Mailbox Q&A Agent."""
     date_str = reference_date.strftime("%Y-%m-%d (%A)")
 
-    # Đóng gói ngữ cảnh các thread tìm thấy vào thẻ XML an toàn
     contexts_xml = []
     for ctx in retrieved_contexts:
+        messages_block = ""
+        if ctx.messages:
+            msg_xml_list = []
+            for msg in ctx.messages:
+                m_date_str = msg.date_sent.strftime("%Y-%m-%d %H:%M") if msg.date_sent else "N/A"
+                msg_xml_list.append(
+                    f'            <message id="{msg.message_id}">\n'
+                    f'                Sender: {msg.sender} | Date: {m_date_str}\n'
+                    f'                BodyExcerpt: {msg.body_snippet}\n'
+                    f'            </message>'
+                )
+            messages_block = "\n        <recent_messages>\n" + "\n".join(msg_xml_list) + "\n        </recent_messages>"
+
         contexts_xml.append(
             f'    <retrieved_thread id="{str(ctx.thread_id)}">\n'
             f'        Subject: {ctx.subject}\n'
             f'        Category: {ctx.category}\n'
             f'        Summary: {ctx.summary}\n'
-            f'        SimilarityScore: {ctx.similarity_score:.2f}\n'
+            f'        MatchScore: {ctx.similarity_score:.2f}\n'
+            f'{messages_block}\n'
             f'    </retrieved_thread>'
         )
     contexts_block = "\n".join(contexts_xml)
@@ -112,18 +124,19 @@ THÔNG TIN NGƯỜI DÙNG HIỆN TẠI (CHỦ HỘP THƯ):
 - Địa chỉ email: {owner_email}
 - Thời điểm hiện tại: {date_str} (Múi giờ: {timezone_str})
 
-CÁC EMAIL LIÊN QUAN ĐƯỢC TÌM THẤY TỪ HỘP THƯ (NGỮ CẢNH):
+CÁC EMAIL LIÊN QUAN ĐƯỢC TÌM THẤY TỪ HỘP THƯ (NGỮ CẢNH ĐẦY ĐỦ):
 <context>
 {contexts_block}
 </context>
 
 QUY TẮC PHẢN HỒI BẮT BUỘC (GROUNDED REASONING):
-1. Tính xác thực tuyệt đối: Bạn CHỈ ĐƯỢC PHÉP trả lời dựa trên thông tin có trong thẻ <context> ở trên. Tuyệt đối không bịa đặt (No Hallucination).
-2. Nếu ngữ cảnh không có thông tin liên quan đến câu hỏi: Hãy trả lời lịch sự rằng bạn không tìm thấy email nào liên quan trong hộp thư.
-3. Trích dẫn bằng chứng (Citations):
+1. Tính xác thực tuyệt đối: Bạn CHỈ ĐƯỢC PHÉP trả lời dựa trên thông tin có trong thẻ <context> ở trên (bao gồm cả Summary và các thẻ <message> chi tiết). Tuyệt đối không bịa đặt số liệu, giờ giấc, người gửi (No Hallucination).
+2. Hãy ưu tiên trích dẫn các chi tiết cụ thể từ <recent_messages> (thời gian chính xác, người gửi, số liệu, đường link) để câu trả lời mang lại giá trị cao nhất.
+3. Nếu ngữ cảnh không có thông tin liên quan đến câu hỏi: Hãy trả lời lịch sự rằng bạn không tìm thấy email nào liên quan trong hộp thư.
+4. Trích dẫn bằng chứng (Citations):
    - Với mỗi khẳng định quan trọng, hãy ghi rõ trích dẫn vào mảng `citations`:
      + `thread_id`: ID của chuỗi email.
      + `subject`: Tiêu đề email.
-     + `evidence`: Câu trích dẫn ngắn làm bằng chứng từ bản tóm tắt email.
-4. Ngôn ngữ: Trả lời tự nhiên, rõ ràng, chuyên nghiệp bằng tiếng Việt.
+     + `evidence`: Câu trích dẫn nguyên văn ngắn làm bằng chứng.
+5. Ngôn ngữ: Trả lời tự nhiên, rõ ràng, mạch lạc bằng tiếng Việt.
 """

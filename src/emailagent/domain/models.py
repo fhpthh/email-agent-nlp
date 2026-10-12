@@ -2,7 +2,6 @@ from datetime import date, datetime
 from typing import List, Optional
 from uuid import UUID
 
-from google.genai._gaos.types import basemodel
 from pydantic import BaseModel, Field
 
 from src.emailagent.domain.enums import EmailCategory, PriorityLevel
@@ -61,6 +60,13 @@ class BatchThreadInsightModel(BaseModel):
 #  VECTOR MEMORY & CHAT Q&A MODELS
 # ============================================================================
 
+class EmailMessageSnippet(BaseModel):
+    message_id: str
+    sender: str
+    date_sent: Optional[datetime] = None
+    body_snippet: str
+
+
 class RetrievedThreadContext(BaseModel):
     """DTO ngữ cảnh luồng thư lấy từ pgvector"""
     thread_id: UUID
@@ -69,6 +75,7 @@ class RetrievedThreadContext(BaseModel):
     summary: str
     similarity_score: float = Field(..., description="Cosine similarity score (0.0 to 1.0)")
     last_message_at: Optional[datetime] = None
+    messages: List[EmailMessageSnippet] = Field(default_factory=list)
 
 
 class CitationItem(BaseModel):

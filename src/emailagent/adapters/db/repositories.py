@@ -1,9 +1,11 @@
 import logging
-from typing import List, Optional
+from typing import List, Optional, Dict
 from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.emailagent.domain.models import RawEmailMessage, RetrievedThreadContext
+
+from src.emailagent.config import settings
+from src.emailagent.domain.models import RawEmailMessage, RetrievedThreadContext, EmailMessageSnippet
 
 logger = logging.getLogger("emailagent.db.repository")
 
@@ -206,37 +208,63 @@ class EmailRepository:
             "embedding": vector_str
         })
 
+    async def _fetch_thread_messages_snippets(
+        self,
+        thread_ids: List[UUID],
+        max_per_thread: int = 3
+    ) -> Dict[UUID, List[EmailMessageSnippet]]:
+
+        if not thread_ids:
+            return {}
+
+        query = text("""
+            WITH RankedEmails AS (
+                SELECT 
+                    e.id AS message_id,
+                    e.thread_id,
+                    e.sender,
+                    e.date_sent,
+                    SUBSTRING(COALESCE(e.clean_body, '') FROM 1 FOR 800) AS body_snippet,
+                    ROW_NUMBER() OVER(PARTITION BY e.thread_id ORDER BY e.date_sent DESC) as rank_idx
+                FROM emails e
+                WHERE e.thread_id = ANY(:thread_ids)
+            )
+            SELECT message_id, thread_id, sender, date_sent, body_snippet
+            FROM RankedEmails
+            WHERE rank_idx <= :max_per_thread
+            ORDER BY thread_id, date_sent ASC;
+        """)
+
+        result = await self._session.execute(query, {
+            "thread_ids": thread_ids,
+            "max_per_thread": max_per_thread
+        })
+        rows = result.fetchall()
+
+        mapping: Dict[UUID, List[EmailMessageSnippet]] = {tid: [] for tid in thread_ids}
+        for row in rows:
+            mapping[row.thread_id].append(
+                EmailMessageSnippet(
+                    message_id=str(row.message_id),
+                    sender=row.sender,
+                    date_sent=row.date_sent,
+                    body_snippet=row.body_snippet or ""
+                )
+            )
+        return mapping
+
     async def search_similar_threads(
-            self,
-            query_embedding: List[float],
-            account_id: Optional[UUID] = None,
-            top_k: int = 5,
-            threshold: float = 0.60
+        self,
+        query_embedding: List[float],
+        query_text: Optional[str] = None,
+        account_id: Optional[UUID] = None,
+        top_k: int = 5,
+        threshold: float = 0.60
     ) -> List[RetrievedThreadContext]:
-        """Perform cosine similarity search on threads using pgvector <=> operator."""
         vector_str = f"[{','.join(f'{x:.6f}' for x in query_embedding)}]"
+        clean_text_query = (query_text or "").strip()
 
-        # 1. Khởi tạo danh sách điều kiện WHERE mặc định
-        conditions = [
-            "t.embedding IS NOT NULL",
-            "(1 - (t.embedding <=> CAST(:query_vector AS vector))) >= :threshold"
-        ]
-
-        params: dict = {
-            "query_vector": vector_str,
-            "threshold": threshold,
-            "top_k": top_k
-        }
-
-        # 2. Chỉ bổ sung điều kiện lọc account_id khi có giá trị truyền vào (tránh AmbiguousParameterError)
-        if account_id is not None:
-            conditions.append("t.account_id = :account_id")
-            params["account_id"] = account_id
-
-        where_clause = " AND ".join(conditions)
-
-        # 3. Lắp ráp câu truy vấn SQL động
-        query = text(f"""
+        vector_query = text("""
             SELECT 
                 t.id AS thread_id,
                 t.subject,
@@ -245,24 +273,105 @@ class EmailRepository:
                 t.last_message_at,
                 (1 - (t.embedding <=> CAST(:query_vector AS vector))) AS similarity_score
             FROM threads t
-            WHERE {where_clause}
+            WHERE t.embedding IS NOT NULL
+              AND (:account_id IS NULL OR t.account_id = :account_id)
             ORDER BY similarity_score DESC
-            LIMIT :top_k;
+            LIMIT :vector_limit;
         """)
 
-        result = await self._session.execute(query, params)
-        rows = result.fetchall()
-        return [
-            RetrievedThreadContext(
-                thread_id=row.thread_id,
-                subject=row.subject or "(No title)",
-                category=row.category or "uncategorized",
-                summary=row.summary or "",
-                similarity_score=float(row.similarity_score),
-                last_message_at=row.last_message_at
+        vector_res = await self._session.execute(vector_query, {
+            "query_vector": vector_str,
+            "account_id": account_id,
+            "vector_limit": top_k * 2
+        })
+        vector_rows = vector_res.fetchall()
+
+        fts_rows = []
+        if clean_text_query:
+            fts_query = text("""
+                SELECT 
+                    e.thread_id,
+                    t.subject,
+                    t.category,
+                    t.summary,
+                    t.last_message_at,
+                    ts_rank_cd(e.tsv, plainto_tsquery('simple', immutable_unaccent(:text_query))) AS fts_score
+                FROM emails e
+                JOIN threads t ON e.thread_id = t.id
+                WHERE e.tsv @@ plainto_tsquery('simple', immutable_unaccent(:text_query))
+                  AND (:account_id IS NULL OR t.account_id = :account_id)
+                ORDER BY fts_score DESC
+                LIMIT :fts_limit;
+            """)
+            fts_res = await self._session.execute(fts_query, {
+                "text_query": clean_text_query,
+                "account_id": account_id,
+                "fts_limit": top_k * 2
+            })
+            fts_rows = fts_res.fetchall()
+
+        rrf_scores: Dict[UUID, float] = {}
+        candidate_meta: Dict[UUID, dict] = {}
+
+        for rank_idx, row in enumerate(vector_rows):
+            tid = row.thread_id
+            score = float(row.similarity_score)
+            rrf_scores[tid] = rrf_scores.get(tid, 0.0) + (1.0 / (60 + rank_idx + 1))
+            if tid not in candidate_meta:
+                candidate_meta[tid] = {
+                    "subject": row.subject,
+                    "category": row.category,
+                    "summary": row.summary,
+                    "last_message_at": row.last_message_at,
+                    "cosine_score": score
+                }
+
+        for rank_idx, row in enumerate(fts_rows):
+            tid = row.thread_id
+            rrf_scores[tid] = rrf_scores.get(tid, 0.0) + (1.0 / (60 + rank_idx + 1))
+            if tid not in candidate_meta:
+                candidate_meta[tid] = {
+                    "subject": row.subject,
+                    "category": row.category,
+                    "summary": row.summary,
+                    "last_message_at": row.last_message_at,
+                    "cosine_score": 0.50  # Điểm cosine ước lượng cho match FTS
+                }
+
+        sorted_threads = sorted(rrf_scores.keys(), key=lambda t: rrf_scores[t], reverse=True)
+
+        final_selected_ids: List[UUID] = []
+        for tid in sorted_threads:
+            cosine_score = candidate_meta[tid]["cosine_score"]
+            if cosine_score >= threshold or tid in [r.thread_id for r in fts_rows]:
+                final_selected_ids.append(tid)
+            elif len(final_selected_ids) == 0 and cosine_score >= getattr(settings, "RAG_MIN_FALLBACK_THRESHOLD", 0.40):
+                final_selected_ids.append(tid)
+
+            if len(final_selected_ids) >= top_k:
+                break
+
+        if not final_selected_ids:
+            return []
+
+        max_snippets = getattr(settings, "RAG_MAX_MESSAGES_PER_THREAD", 3)
+        messages_mapping = await self._fetch_thread_messages_snippets(final_selected_ids, max_per_thread=max_snippets)
+
+        contexts = []
+        for tid in final_selected_ids:
+            meta = candidate_meta[tid]
+            contexts.append(
+                RetrievedThreadContext(
+                    thread_id=tid,
+                    subject=meta["subject"] or "(No title)",
+                    category=meta["category"] or "uncategorized",
+                    summary=meta["summary"] or "",
+                    similarity_score=meta["cosine_score"],
+                    last_message_at=meta["last_message_at"],
+                    messages=messages_mapping.get(tid, [])
+                )
             )
-            for row in rows
-        ]
+        return contexts
 
     async def get_action_items(
             self,
