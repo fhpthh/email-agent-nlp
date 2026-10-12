@@ -1,4 +1,6 @@
 from pathlib import Path
+
+from openai import AsyncOpenAI
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -27,14 +29,19 @@ class Settings(BaseSettings):
     DEFAULT_TIMEZONE: str = Field("Asia/Ho_Chi_Minh", description="Timezone for resolving dates")
 
     # Provider đang kích hoạt: 'fake' | 'gmail' | 'outlook'
-    ACTIVE_EMAIL_PROVIDER: str = "fake"
+    ACTIVE_EMAIL_PROVIDER: str = "gmail"
     GMAIL_CREDENTIALS_PATH: str = "credentials.json"
     GMAIL_TOKEN_PATH: str = "token.json"
 
     # Cấu hình AI & LLM Gateway
-    LLM_PROVIDER: str = "gemini"  # 'gemini' hoặc 'openai'
+    LLM_PROVIDER: str = "litellm"
     GEMINI_API_KEY: str = ""
     OPENAI_API_KEY: str = ""
+
+    LITELLM_BASE_URL: str = Field(default="", description="Base URL for litellm")
+    LITELLM_API_KEY: str = Field(default="", description="API key for litellm")
+    LITELLM_MODEL_NAME: str = Field("gemini/gemini-3.8-flash", description="Name for litellm model")
+
     LLM_MODEL_NAME: str = "gemini-3.8-flash"
     VECTOR_DIMENSION: int = 768
 
@@ -50,15 +57,29 @@ class Settings(BaseSettings):
     FALLBACK_OWNER_NAME: str = Field("Default user", description="Name for fallback owner")
 
     # --- Vector Memory & Embedding Configuration ---
-    # --- Cấu hình Vector Memory & Embedding ---
-    EMBEDDING_PROVIDER: str = Field("gemini", description="Embedding provider: 'gemini' | 'openai'")
-    EMBEDDING_MODEL_NAME: str = Field("gemini-embedding-001", description="Google text embedding model name")
+    EMBEDDING_PROVIDER: str = Field("litellm", description="Embedding provider: 'gemini' | 'openai'")
+    EMBEDDING_MODEL_NAME: str = Field("gemini/gemini-embedding-001", description="Google text embedding model name")
     VECTOR_DIMENSION: int = Field(768, description="Vector dimension matching database schema")
 
-    # --- Cấu hình RAG / Trợ lý Chat ---
     RAG_TOP_K: int = Field(5, description="Number of candidate threads to retrieve")
     RAG_SIMILARITY_THRESHOLD: float = Field(0.60, description="Minimum cosine similarity threshold (0.0 to 1.0)")
 
+    RAG_MIN_FALLBACK_THRESHOLD: float = Field(0.40,
+                                              description="Fallback similarity threshold when strict search yields no results")
+    RAG_MAX_MESSAGES_PER_THREAD: int = Field(3,
+                                             description="Maximum recent messages to fetch per thread for detail grounding")
 
-# Singleton instance để import dùng chung toàn dự án
+    SCHEDULER_ENABLED: bool = Field(default=True, description="Enables scheduler mode")
+    SCHEDULER_INTERVAL_MINUTES: int = Field(default=30, description="Minimum number of minutes to run scheduler")
+    SCHEDULER_JOB_ID: str = Field(default="email_sync_worker", description="Job id for scheduler mode")
+    SCHEDULER_DAYS_BACK: int = Field(default=1, description="Number of days to backfill")
+    SCHEDULER_BATCH_LIMIT: int = Field(default=15)
+    SCHEDULER_CHUNK_SIZE: int = Field(default=5)
+
+
 settings = Settings()
+
+client = AsyncOpenAI(
+    api_key=settings.LITELLM_API_KEY,
+    base_url=settings.LITELLM_BASE_URL,
+)

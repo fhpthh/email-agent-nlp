@@ -1,6 +1,7 @@
 from functools import lru_cache
 
 from src.emailagent.adapters.llm.gemini import GeminiLLMGateway
+from src.emailagent.adapters.llm.litellm import LiteLLMGateway
 from src.emailagent.config import settings
 from src.emailagent.ports.llm import LLMGateway
 
@@ -11,5 +12,7 @@ def get_configured_llm_gateway() -> LLMGateway:
 
     if provider == "gemini":
         return GeminiLLMGateway()
+    elif provider in ("litellm", "openai"):
+        return LiteLLMGateway()
     else:
         raise ValueError(f"Unsupported LLM gateway provider: {provider}")

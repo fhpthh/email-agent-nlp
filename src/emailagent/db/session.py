@@ -1,14 +1,17 @@
 import logging
 from typing import AsyncGenerator
+
+from sqlalchemy import false
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from src.emailagent.config import settings
 
 logger = logging.getLogger("emailagent.db")
+logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
 
 # Khởi tạo engine kết nối async với PostgreSQL
 engine = create_async_engine(
     settings.DATABASE_URL,
-    echo=settings.DEBUG,
+    echo=False,
     pool_size=settings.DB_POOL_SIZE,
     max_overflow=settings.DB_MAX_OVERFLOW,
     pool_pre_ping=True,  # Tự động ping để kiểm tra kết nối còn sống không

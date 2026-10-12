@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from src.emailagent.api.routers import analysis, chat
 from src.emailagent.api.routers import sync
 from src.emailagent.config import settings
+from src.emailagent.services.scheduler import AgentSchedulerRunner
 
 # Cấu hình log chuẩn tiếng Anh
 logging.basicConfig(
@@ -14,12 +15,21 @@ logging.basicConfig(
 )
 logger = logging.getLogger("emailagent")
 
+scheduler_runner = AgentSchedulerRunner()
+
 
 # Quản lý vòng đời khởi động và tắt ứng dụng
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Application starting up: %s (ENV=%s)", settings.APP_NAME, settings.ENV)
+
+    if settings.SCHEDULER_ENABLED:
+        scheduler_runner.start()
+    else:
+        logger.info("Background scheduler is disabled via configuration.")
     yield
+    if scheduler_runner.is_running:
+        scheduler_runner.shutdown(wait=False)
     logger.info("Application shutting down gracefully.")
 
 
@@ -39,7 +49,8 @@ async def health_check():
     return {
         "status": "healthy",
         "app_name": settings.APP_NAME,
-        "environment": settings.ENV
+        "environment": settings.ENV,
+        "scheduler_running": scheduler_runner.is_running
     }
 
 

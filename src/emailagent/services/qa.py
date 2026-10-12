@@ -40,6 +40,7 @@ class MailboxQAService:
             repo = EmailRepository(session)
             retrieved_threads = await repo.search_similar_threads(
                 query_embedding=query_vector,
+                query_text=request.query,
                 account_id=request.account_id,
                 top_k=settings.RAG_TOP_K,
                 threshold=settings.RAG_SIMILARITY_THRESHOLD
