@@ -10,12 +10,9 @@ from src.emailagent.adapters.db.repositories import EmailRepository
 from src.emailagent.config import settings
 from src.emailagent.domain.models import BatchThreadInsightModel, ThreadAnalysisItem
 from src.emailagent.ports.llm import LLMGateway, UntrustedPayload
+from src.emailagent.prompts import format_thread_messages_to_xml, build_analysis_system_instruction
 from src.emailagent.utils.fingerprint import compute_action_item_fingerprint
 from src.emailagent.utils.prefilter import EmailRuleEngine, default_rule_engine
-from src.emailagent.utils.prompt import (
-    build_analysis_system_instruction,
-    format_thread_messages_to_xml
-)
 
 logger = logging.getLogger("emailagent.services.analysis")
 

@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from src.emailagent.adapters.db.repositories import EmailRepository
 from src.emailagent.domain.models import ThreadEmbeddingSyncResult
 from src.emailagent.ports.embedding import EmbeddingGateway
-from src.emailagent.utils.prompt import build_thread_embedding_text
+from src.emailagent.prompts import build_thread_embedding_text
 
 logger = logging.getLogger("emailagent.services.embedding")
 
