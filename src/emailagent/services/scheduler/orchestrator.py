@@ -5,11 +5,11 @@ from typing import Any, Dict, Optional
 
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from src.emailagent.adapters.db.session import async_session_factory
 from src.emailagent.adapters.embedding.factory import get_configured_embedding_gateway
 from src.emailagent.adapters.llm.factory import get_configured_llm_gateway
 from src.emailagent.adapters.provider.factory import get_configured_email_provider
 from src.emailagent.config import settings
-from db.session import async_session_factory
 from src.emailagent.services.analysis import ThreadAnalysisService
 from src.emailagent.services.embedding import ThreadEmbeddingService
 from src.emailagent.services.ingestion import IngestionService

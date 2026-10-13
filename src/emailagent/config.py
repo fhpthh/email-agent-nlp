@@ -70,7 +70,7 @@ class Settings(BaseSettings):
                                              description="Maximum recent messages to fetch per thread for detail grounding")
 
     SCHEDULER_ENABLED: bool = Field(default=True, description="Enables scheduler mode")
-    SCHEDULER_INTERVAL_MINUTES: int = Field(default=30, description="Minimum number of minutes to run scheduler")
+    SCHEDULER_INTERVAL_MINUTES: int = Field(default=15, description="Minimum number of minutes to run scheduler")
     SCHEDULER_JOB_ID: str = Field(default="email_sync_worker", description="Job id for scheduler mode")
     SCHEDULER_DAYS_BACK: int = Field(default=1, description="Number of days to backfill")
     SCHEDULER_BATCH_LIMIT: int = Field(default=15)

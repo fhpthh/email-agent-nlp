@@ -1,7 +1,10 @@
 import logging
 from pathlib import Path
 from typing import Optional
+
 from dotenv import load_dotenv
+
+from src.emailagent.adapters.db.session import async_session_factory
 
 # Tự động nạp .env từ thư mục gốc của dự án
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -9,10 +12,8 @@ load_dotenv(PROJECT_ROOT / ".env")
 
 from mcp.server.mcpserver import MCPServer
 from src.emailagent.adapters.embedding.factory import get_configured_embedding_gateway
-from db.session import async_session_factory
 from src.emailagent.services.tools import MailboxToolsService
 
-# Tắt log stdout để không làm nhiễu giao thức JSON-RPC qua stdio của MCP
 logging.basicConfig(level=logging.WARNING)
 
 mcp = MCPServer("Email Brief Agent")
@@ -109,4 +110,3 @@ async def get_recent_emails(days_back: int = 1, unread_only: bool = False, limit
 
 if __name__ == "__main__":
     mcp.run(transport="stdio")
-

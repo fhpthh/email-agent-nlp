@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends
 
+from src.emailagent.adapters.db.session import async_session_factory
 from src.emailagent.adapters.embedding.factory import get_configured_embedding_gateway
 from src.emailagent.adapters.llm.factory import get_configured_llm_gateway
-from db.session import async_session_factory
 from src.emailagent.domain.models import (
     ChatQueryRequest,
     ChatQueryResponse,
