@@ -1,5 +1,5 @@
 import logging
-from typing import List
+
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from src.emailagent.adapters.db.repositories import EmailRepository
@@ -38,7 +38,9 @@ class ThreadEmbeddingService:
                     build_thread_embedding_text(
                         subject=t.get("subject") or "(Không có tiêu đề)",
                         category=t.get("category") or "uncategorized",
-                        summary=t.get("summary") or ""
+                        summary=t.get("summary") or "",
+                        sender=t.get("senders") or None,
+                        body_snippet=t.get("body_snippet") or None
                     )
                     for t in chunk
                 ]

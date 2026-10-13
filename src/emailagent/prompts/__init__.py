@@ -18,16 +18,19 @@ def build_thread_embedding_text(
         category: str,
         summary: str,
         action_items: Optional[List[str]] = None,
-        sender: Optional[str] = None
+        sender: Optional[str] = None,
+        body_snippet: Optional[str] = None
 ) -> str:
     sender_block = f"Người gửi: {sender}\n" if sender else ""
     tasks_block = f"\nNhiệm vụ: {'; '.join(action_items)}" if action_items else ""
+    snippet_block = f"\nNội dung thư: {body_snippet}" if body_snippet else ""
     return (
         f"{sender_block}"
         f"Tiêu đề: {subject}\n"
         f"Phân loại: {category}\n"
         f"Nội dung chính: {summary}"
         f"{tasks_block}"
+        f"{snippet_block}"
     ).strip()
 
 
