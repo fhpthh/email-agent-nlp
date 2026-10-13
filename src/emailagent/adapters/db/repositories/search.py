@@ -85,76 +85,91 @@ class SearchRepository(BaseRepository):
         return mapping
 
     async def search_similar_threads(
-        self,
-        query_embedding: List[float],
-        query_text: Optional[str] = None,
-        account_id: Optional[UUID] = None,
-        date_after: Optional[datetime] = None,
-        top_k: int = 8,
-        threshold: float = 0.50
+            self,
+            query_embedding: List[float],
+            query_text: Optional[str] = None,
+            expanded_keywords: Optional[List[str]] = None,
+            account_id: Optional[UUID] = None,
+            date_after: Optional[datetime] = None,
+            date_before: Optional[datetime] = None,
+            category: Optional[str] = None,
+            top_k: int = 8,
+            threshold: float = 0.50
     ) -> List[RetrievedThreadContext]:
-        """
-        Tìm kiếm Hybrid kết hợp pgvector và Full-Text Search.
-        Hỗ trợ lọc theo mốc thời gian date_after và lọc đa dạng hóa Diversity.
-        """
         vector_str = f"[{','.join(f'{x:.6f}' for x in query_embedding)}]"
         raw_text_query = (query_text or "").strip()
-        # Lọc hư từ (Stopwords) ở tầng Application trước khi đẩy vào FTS
+
+        # Mở rộng từ đồng nghĩa vào FTS query
+        if expanded_keywords:
+            raw_text_query = f"{raw_text_query} {' '.join(expanded_keywords)}".strip()
+
         clean_text_query = remove_vietnamese_stopwords(raw_text_query)
 
-        # 1. Vector Search Query
+        # 1. Vector Search Query (Hỗ trợ lọc date_before & category)
         vector_query = text("""
-            SELECT 
-                t.id AS thread_id,
-                t.subject,
-                t.category,
-                t.summary,
-                t.last_message_at,
-                (1 - (t.embedding <=> CAST(:query_vector AS vector))) AS similarity_score
-            FROM threads t
-            WHERE t.embedding IS NOT NULL
-              AND (CAST(:account_id AS uuid) IS NULL OR t.account_id = CAST(:account_id AS uuid))
-              AND (CAST(:date_after AS timestamptz) IS NULL OR t.last_message_at >= CAST(:date_after AS timestamptz))
-            ORDER BY similarity_score DESC
-            LIMIT :vector_limit;
-        """)
+                            SELECT t.id                                                  AS thread_id,
+                                   t.subject,
+                                   t.category,
+                                   t.summary,
+                                   t.last_message_at,
+                                   (1 - (t.embedding <=> CAST(:query_vector AS vector))) AS similarity_score
+                            FROM threads t
+                            WHERE t.embedding IS NOT NULL
+                              AND (CAST(:account_id AS uuid) IS NULL OR t.account_id = CAST(:account_id AS uuid))
+                              AND (CAST(:date_after AS timestamptz) IS NULL OR
+                                   t.last_message_at >= CAST(:date_after AS timestamptz))
+                              AND (CAST(:date_before AS timestamptz) IS NULL OR
+                                   t.last_message_at <= CAST(:date_before AS timestamptz))
+                              AND (CAST(:category AS text) IS NULL OR t.category = CAST(:category AS text))
+                            ORDER BY similarity_score DESC LIMIT :vector_limit;
+                            """)
 
         vector_res = await self._session.execute(vector_query, {
             "query_vector": vector_str,
             "account_id": account_id,
             "date_after": date_after,
+            "date_before": date_before,
+            "category": category,
             "vector_limit": top_k * 3
         })
         vector_rows = vector_res.fetchall()
 
-        # 2. Sparse Full-Text Search Query (Đã tối ưu hóa Stopwords, Field Weighting và Length Normalization)
+        # 2. Sparse Full-Text Search Query (Hỗ trợ lọc date_before & category)
         fts_rows = []
         if clean_text_query:
             fts_query = text("""
-                SELECT 
-                    e.thread_id,
-                    t.subject,
-                    t.category,
-                    t.summary,
-                    t.last_message_at,
-                    ts_rank_cd(
-                        '{0.1, 0.2, 0.4, 1.0}',
-                        e.tsv,
-                        plainto_tsquery('simple', clean_fts_vietnamese(:text_query)),
-                        32
-                    ) AS fts_score
-                FROM emails e
-                JOIN threads t ON e.thread_id = t.id
-                WHERE e.tsv @@ plainto_tsquery('simple', clean_fts_vietnamese(:text_query))
-                  AND (CAST(:account_id AS uuid) IS NULL OR t.account_id = CAST(:account_id AS uuid))
-                  AND (CAST(:date_after AS timestamptz) IS NULL OR t.last_message_at >= CAST(:date_after AS timestamptz))
-                ORDER BY fts_score DESC
-                LIMIT :fts_limit;
-            """)
+                             SELECT e.thread_id,
+                                    t.subject,
+                                    t.category,
+                                    t.summary,
+                                    t.last_message_at,
+                                    ts_rank_cd(
+                                            '{0.1, 0.2, 0.4, 1.0}',
+                                            e.tsv,
+                                            plainto_tsquery('simple', clean_fts_vietnamese(:text_query)),
+                                            32
+                                    ) AS fts_score
+                             FROM emails e
+                                      JOIN threads t ON e.thread_id = t.id
+                             WHERE e.tsv @@ plainto_tsquery('simple'
+                                 , clean_fts_vietnamese(:text_query))
+                               AND (CAST (:account_id AS uuid) IS NULL
+                                OR t.account_id = CAST (:account_id AS uuid))
+                               AND (CAST (:date_after AS timestamptz) IS NULL
+                                OR t.last_message_at >= CAST (:date_after AS timestamptz))
+                               AND (CAST (:date_before AS timestamptz) IS NULL
+                                OR t.last_message_at <= CAST (:date_before AS timestamptz))
+                               AND (CAST(:category AS text) IS NULL
+                                OR t.category = CAST(:category AS text))
+                             ORDER BY fts_score DESC
+                                 LIMIT :fts_limit;
+                             """)
             fts_res = await self._session.execute(fts_query, {
                 "text_query": clean_text_query,
                 "account_id": account_id,
                 "date_after": date_after,
+                "date_before": date_before,
+                "category": category,
                 "fts_limit": top_k * 3
             })
             fts_rows = fts_res.fetchall()

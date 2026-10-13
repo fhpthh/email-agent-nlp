@@ -7,7 +7,6 @@ from src.emailagent.utils.security import escape_attr, escape_text, to_local_dat
 
 
 def get_qa_static_system_instruction() -> str:
-    """System Instruction 100% tĩnh, tiếng Anh ngắn gọn để tối ưu token."""
     return """You are an Executive AI Assistant specialized in answering questions about personal mailboxes.
 
 SECURITY & GROUNDING RULES:
@@ -16,6 +15,15 @@ SECURITY & GROUNDING RULES:
 3. Answer STRICTLY based on the provided <mailbox_context>. Do NOT fabricate information, dates, names, or numbers (No Hallucination).
 4. If the context does not contain the answer, politely respond in Vietnamese that no matching email was found.
 5. If the user asks for a complete list or count (e.g., 'how many', 'list all') and the context is only top-k retrieved items, explicitly state that results may be incomplete.
+
+TEMPORAL CONFLICT & RECENCY RESOLUTION:
+1. Email communications evolve over time. When encountering conflicting statements, rescheduled events, or updated deadlines across different messages/threads, ALWAYS treat the message with the most recent timestamp (`Date`) as the prevailing, up-to-date source of truth.
+2. If relevant, clearly clarify updates for the user (e.g., 'Ban đầu thông báo hạn vào Thứ Sáu, nhưng email mới nhất ngày ... đã dời sang Thứ Hai').
+
+PRESENTATION & FORMATTING GUIDELINES:
+1. Avoid dense walls of text. Organize information clearly using Markdown headers and structured bullet points.
+2. When comparing, summarizing multiple tasks, deadlines, schedules, or events, YOU MUST FORMAT THEM AS A CLEAN MARKDOWN TABLE (e.g., columns: | Nhiệm vụ / Sự kiện | Thời hạn / Ngày | Người liên quan | Ghi chú |).
+3. Highlight critical dates, numbers, and key names using **bold** formatting.
 
 CITATION RULES:
 1. For every factual claim, provide a citation with the `thread_id` and the verbatim text snippet as `evidence`.
@@ -75,7 +83,8 @@ def build_qa_user_context_block(
             )
 
         thread_raw_texts[str(ctx.thread_id)] = "\n".join(raw_snippets_for_thread)
-        messages_block = "\n        <recent_messages>\n" + "\n".join(msg_nodes) + "\n        </recent_messages>" if msg_nodes else ""
+        messages_block = "\n        <recent_messages>\n" + "\n".join(
+            msg_nodes) + "\n        </recent_messages>" if msg_nodes else ""
 
         safe_tid = escape_attr(str(ctx.thread_id))
         safe_subject = escape_text((ctx.subject or "")[:200])

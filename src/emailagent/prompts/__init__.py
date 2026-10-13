@@ -9,7 +9,7 @@ from src.emailagent.prompts.qa import (
     build_qa_user_context_block
 )
 from src.emailagent.prompts.rewriter import (
-    build_query_rewriter_prompt
+    build_query_formulation_prompt
 )
 
 
@@ -31,8 +31,10 @@ def build_thread_embedding_text(
     ).strip()
 
 
+# Alias để tương thích ngược với code cũ nếu có chỗ gọi
 build_analysis_system_instruction = get_analysis_static_system_instruction
 build_qa_system_instruction = get_qa_static_system_instruction
+build_query_rewriter_prompt = build_query_formulation_prompt
 
 __all__ = [
     # Q&A RAG
@@ -45,9 +47,10 @@ __all__ = [
     "build_analysis_system_instruction",
     "format_thread_messages_to_xml",
 
-    # Multi-turn Rewriter
+    # Multi-turn Rewriter & Self-Querying
     "build_query_rewriter_prompt",
+    "build_query_formulation_prompt",
 
     # Embedding Text Generator
-    "build_thread_embedding_text"
+    "build_thread_embedding_text",
 ]

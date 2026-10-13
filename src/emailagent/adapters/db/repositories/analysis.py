@@ -1,6 +1,8 @@
 import logging
+from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
+
 from sqlalchemy import text
 
 from .base import BaseRepository
@@ -14,25 +16,24 @@ class AnalysisRepository(BaseRepository):
     async def get_threads_with_pending_emails(self, limit: int = 20) -> List[dict]:
         """Lấy danh sách thread đang có ít nhất 1 email ở trạng thái PENDING."""
         query = text("""
-            SELECT DISTINCT t.id, t.subject, t.account_id, a.timezone
-            FROM threads t
-            JOIN emails e ON e.thread_id = t.id
-            JOIN accounts a ON a.id = t.account_id
-            WHERE e.status = 'PENDING'
-            LIMIT :limit;
-        """)
+                     SELECT DISTINCT t.id, t.subject, t.account_id, a.timezone
+                     FROM threads t
+                              JOIN emails e ON e.thread_id = t.id
+                              JOIN accounts a ON a.id = t.account_id
+                     WHERE e.status = 'PENDING' LIMIT :limit;
+                     """)
         result = await self._session.execute(query, {"limit": limit})
         return [dict(row._mapping) for row in result.fetchall()]
 
     async def save_thread_insight_and_action_items(
-        self,
-        thread_id: UUID,
-        summary: str,
-        category: str,
-        is_urgent: bool,
-        needs_reply: bool,
-        action_items: List[dict],
-        processed_email_ids: List[UUID]
+            self,
+            thread_id: UUID,
+            summary: str,
+            category: str,
+            is_urgent: bool,
+            needs_reply: bool,
+            action_items: List[dict],
+            processed_email_ids: List[UUID]
     ) -> None:
         """
         Thực thi lưu kết quả phân tích:
@@ -42,13 +43,13 @@ class AnalysisRepository(BaseRepository):
         """
         # 1. Cập nhật thread
         update_thread_query = text("""
-            UPDATE threads
-            SET summary = :summary,
-                category = :category,
-                is_urgent = :is_urgent,
-                needs_reply = :needs_reply
-            WHERE id = :thread_id;
-        """)
+                                   UPDATE threads
+                                   SET summary     = :summary,
+                                       category    = :category,
+                                       is_urgent   = :is_urgent,
+                                       needs_reply = :needs_reply
+                                   WHERE id = :thread_id;
+                                   """)
         await self._session.execute(update_thread_query, {
             "thread_id": thread_id,
             "summary": summary,
@@ -60,12 +61,11 @@ class AnalysisRepository(BaseRepository):
         # 2. Insert action items (nếu có)
         if action_items:
             insert_task_query = text("""
-                INSERT INTO action_items (
-                    thread_id, task, assignee, deadline, priority, evidence, fingerprint, status
-                ) VALUES (
-                    :thread_id, :task, :assignee, :deadline, :priority, :evidence, :fingerprint, 'open'
-                ) ON CONFLICT (thread_id, fingerprint) DO NOTHING;
-            """)
+                                     INSERT INTO action_items (thread_id, task, assignee, deadline, priority, evidence,
+                                                               fingerprint, status)
+                                     VALUES (:thread_id, :task, :assignee, :deadline, :priority, :evidence,
+                                             :fingerprint, 'open') ON CONFLICT (thread_id, fingerprint) DO NOTHING;
+                                     """)
             for item in action_items:
                 await self._session.execute(insert_task_query, {
                     "thread_id": thread_id,
@@ -80,21 +80,21 @@ class AnalysisRepository(BaseRepository):
         # 3. Đánh dấu các email đã phân tích thành PROCESSED
         if processed_email_ids:
             update_emails_query = text("""
-                UPDATE emails
-                SET status = 'PROCESSED'
-                WHERE id = ANY(:email_ids);
-            """)
+                                       UPDATE emails
+                                       SET status = 'PROCESSED'
+                                       WHERE id = ANY (:email_ids);
+                                       """)
             await self._session.execute(update_emails_query, {
                 "email_ids": processed_email_ids
             })
 
     async def get_action_items(
-        self,
-        account_id: Optional[UUID] = None,
-        status: str = "open",
-        priority: Optional[str] = None,
-        due_before: Optional[str] = None,
-        limit: int = 20
+            self,
+            account_id: Optional[UUID] = None,
+            status: str = "open",
+            priority: Optional[str] = None,
+            due_before: Optional[str] = None,
+            limit: int = 20
     ) -> List[dict]:
         """Truy vấn danh sách công việc (action items) đã được NLP trích xuất."""
         conditions = ["a.status = :status"]
@@ -130,10 +130,10 @@ class AnalysisRepository(BaseRepository):
         return [dict(row._mapping) for row in result.fetchall()]
 
     async def get_urgent_threads(
-        self,
-        account_id: Optional[UUID] = None,
-        needs_reply_only: bool = False,
-        limit: int = 10
+            self,
+            account_id: Optional[UUID] = None,
+            needs_reply_only: bool = False,
+            limit: int = 10
     ) -> List[dict]:
         """Truy vấn các chuỗi email khẩn cấp hoặc cần người dùng trả lời."""
         conditions = ["(t.is_urgent = TRUE OR t.needs_reply = TRUE)"]
@@ -160,3 +160,56 @@ class AnalysisRepository(BaseRepository):
         """)
         result = await self._session.execute(query, params)
         return [dict(row._mapping) for row in result.fetchall()]
+
+    async def get_analytics_summary(
+            self,
+            account_id: Optional[UUID] = None,
+            metric: Optional[str] = None,
+            category: Optional[str] = None,
+            date_after: Optional[datetime] = None,
+            date_before: Optional[datetime] = None
+    ) -> dict:
+        """Thực hiện thống kê chính xác từ Database cho câu hỏi tổng hợp."""
+        if metric == "count_tasks":
+            # Đếm công việc từ bảng action_items
+            query = text("""
+                         SELECT COUNT(*)                                        as total_tasks,
+                                COUNT(CASE WHEN a.status = 'open' THEN 1 END)   as open_tasks,
+                                COUNT(CASE WHEN a.priority = 'high' THEN 1 END) as high_priority_tasks
+                         FROM action_items a
+                                  JOIN threads t ON t.id = a.thread_id
+                         WHERE (CAST(:account_id AS uuid) IS NULL OR t.account_id = CAST(:account_id AS uuid))
+                           AND (CAST(:date_after AS timestamptz) IS NULL OR
+                                a.created_at >= CAST(:date_after AS timestamptz))
+                           AND (CAST(:date_before AS timestamptz) IS NULL OR
+                                a.created_at <= CAST(:date_before AS timestamptz));
+                         """)
+            res = await self._session.execute(query, {
+                "account_id": account_id,
+                "date_after": date_after,
+                "date_before": date_before
+            })
+            row = res.mappings().first()
+            return dict(row) if row else {"total_tasks": 0, "open_tasks": 0}
+
+        else:
+            query = text("""
+                         SELECT COUNT(*)                                       as total_threads,
+                                COUNT(CASE WHEN is_urgent = TRUE THEN 1 END)   as urgent_threads,
+                                COUNT(CASE WHEN needs_reply = TRUE THEN 1 END) as needs_reply_threads
+                         FROM threads t
+                         WHERE (CAST(:account_id AS uuid) IS NULL OR t.account_id = CAST(:account_id AS uuid))
+                           AND (CAST(:category AS text) IS NULL OR t.category = CAST(:category AS text))
+                           AND (CAST(:date_after AS timestamptz) IS NULL OR
+                                t.last_message_at >= CAST(:date_after AS timestamptz))
+                           AND (CAST(:date_before AS timestamptz) IS NULL OR
+                                t.last_message_at <= CAST(:date_before AS timestamptz));
+                         """)
+            res = await self._session.execute(query, {
+                "account_id": account_id,
+                "category": category,
+                "date_after": date_after,
+                "date_before": date_before
+            })
+            row = res.mappings().first()
+            return dict(row) if row else {"total_threads": 0}

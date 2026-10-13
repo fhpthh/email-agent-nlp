@@ -221,3 +221,4 @@ class ThreadAnalysisService:
             "failed": failed,
             "details": all_details
         }
+

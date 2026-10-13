@@ -4,7 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from src.emailagent.domain.enums import EmailCategory, PriorityLevel
+from src.emailagent.domain.enums import EmailCategory, PriorityLevel, QueryIntent
 
 
 # Nhiệm vụ cụ thể cần làm trích xuất từ email
@@ -120,3 +120,13 @@ class ThreadEmbeddingSyncResult(BaseModel):
     total_found: int = Field(0, description="Total threads needing embeddings")
     synced: int = Field(0, description="Successfully embedded and saved threads")
     failed: int = Field(0, description="Failed threads count")
+
+
+class QueryFormulationResult(BaseModel):
+    intent: QueryIntent = Field(default=QueryIntent.SEARCH, description="Intent")
+    standalone_query: str = Field(..., description="Standalone query")
+    expanded_keywords: List[str] = Field(default_factory=list, description="Expanded keyword")
+    date_after: Optional[datetime] = Field(None, description="Date after which the query was executed")
+    date_before: Optional[datetime] = Field(None, description="Date before which the query was executed")
+    category: Optional[str] = Field(None, description="Classified email category")
+    analytics_metric: Optional[str] = Field(None, description="Analytics metric")
