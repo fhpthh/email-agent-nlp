@@ -1,6 +1,5 @@
 import logging
-from datetime import datetime, timezone
-
+from datetime import datetime, timezone, timedelta
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from src.emailagent.adapters.db.repositories import EmailRepository
@@ -37,7 +36,7 @@ class MailboxQAService:
         effective_query = request.query
         rewritten_query = None
 
-        # 1. Multi-turn Adaptive Routing (Sliding Window 4 tin nhắn gần nhất)
+        # 1. Multi-turn Adaptive Routing
         if request.chat_history and len(request.chat_history) > 0:
             recent_turns = request.chat_history[-4:]
             rewrite_prompt = build_query_rewriter_prompt(
@@ -55,9 +54,19 @@ class MailboxQAService:
                 logger.warning("Rewriting failed: %s. Using original query.", e)
                 effective_query = request.query
 
-        # 2. Vector Embedding & Hybrid Retrieval
+        # 2. Tự động bóc tách bộ lọc thời gian từ câu hỏi (Temporal Filter)
+        date_after = None
+        q_lower = request.query.lower()
+        now_utc = datetime.now(timezone.utc)
+
+        if any(w in q_lower for w in ["gần đây", "vừa rồi", "tuần này", "recently", "latest"]):
+            date_after = now_utc - timedelta(days=7)
+        elif any(w in q_lower for w in ["hôm nay", "đêm qua", "tối qua", "hôm qua", "yesterday", "today"]):
+            date_after = now_utc - timedelta(days=2)
+
+        # 3. Vector Embedding & Hybrid Retrieval
         query_vector = await self.embedding_gateway.embed_text(effective_query)
-        top_k = request.top_k or settings.RAG_TOP_K
+        top_k = request.top_k or 8  # Tăng lên 8 threads để mở rộng phễu ứng viên
 
         async with self.session_factory() as session:
             repo = EmailRepository(session)
@@ -65,6 +74,7 @@ class MailboxQAService:
                 query_embedding=query_vector,
                 query_text=effective_query,
                 account_id=request.account_id,
+                date_after=date_after,
                 top_k=top_k,
                 threshold=settings.RAG_SIMILARITY_THRESHOLD
             )
@@ -86,10 +96,10 @@ class MailboxQAService:
                 relevant_threads_count=0
             )
 
-        # 3. Tạo Context Block và trích xuất Raw Snippets để phục vụ kiểm chứng
+        # 4. Đóng gói Context an toàn
         user_context_str, thread_raw_texts = build_qa_user_context_block(
             retrieved_contexts=retrieved_threads,
-            reference_date=datetime.now(timezone.utc),
+            reference_date=now_utc,
             owner_name=owner_name,
             owner_email=owner_email,
             timezone_str=timezone_str
@@ -104,14 +114,14 @@ class MailboxQAService:
             )
         ]
 
-        # 4. Gọi LLM trích xuất câu trả lời
+        # 5. Gọi LLM trích xuất câu trả lời
         generated_result: QAGeneratedAnswer = await self.llm.extract_structured(
             schema=QAGeneratedAnswer,
             system_instruction=system_instruction,
             untrusted_contents=user_payload
         )
 
-        # 5. Gắn Subject từ DB và Xác thực trích dẫn với đúng raw snippet của từng thread
+        # 6. Gán Subject & Kiểm chứng Citation bằng code Python
         thread_subject_map = {str(t.thread_id): t.subject for t in retrieved_threads}
         for citation in generated_result.citations:
             citation.subject = thread_subject_map.get(citation.thread_id, "Không có tiêu đề")

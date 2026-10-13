@@ -1,10 +1,13 @@
 import logging
+import re
+from datetime import datetime
 from typing import Dict, List, Optional
 from uuid import UUID
 from sqlalchemy import text
 
 from src.emailagent.config import settings
 from src.emailagent.domain.models import EmailMessageSnippet, RetrievedThreadContext
+from src.emailagent.utils.stopwords import remove_vietnamese_stopwords
 from .base import BaseRepository
 
 logger = logging.getLogger("emailagent.db.repository.search")
@@ -14,7 +17,6 @@ class SearchRepository(BaseRepository):
     """Repository phụ trách Vector Search, Full-Text Search và thuật toán RRF."""
 
     async def get_threads_missing_embeddings(self, limit: int = 50) -> List[dict]:
-        """Lấy danh sách threads đã tóm tắt nhưng chưa sinh vector embedding."""
         query = text("""
             SELECT id, subject, category, summary
             FROM threads
@@ -27,7 +29,6 @@ class SearchRepository(BaseRepository):
         return [dict(row._mapping) for row in result.fetchall()]
 
     async def update_thread_embedding(self, thread_id: UUID, embedding: List[float]) -> None:
-        """Cập nhật vector embedding 768 chiều vào cột embedding của threads."""
         vector_str = f"[{','.join(f'{x:.6f}' for x in embedding)}]"
         query = text("""
             UPDATE threads
@@ -44,7 +45,6 @@ class SearchRepository(BaseRepository):
         thread_ids: List[UUID],
         max_per_thread: int = 3
     ) -> Dict[UUID, List[EmailMessageSnippet]]:
-        """Lấy tối đa N tin nhắn mới nhất của từng thread, sắp xếp theo thời gian tăng dần."""
         if not thread_ids:
             return {}
 
@@ -89,16 +89,20 @@ class SearchRepository(BaseRepository):
         query_embedding: List[float],
         query_text: Optional[str] = None,
         account_id: Optional[UUID] = None,
-        top_k: int = 5,
-        threshold: float = 0.60
+        date_after: Optional[datetime] = None,
+        top_k: int = 8,
+        threshold: float = 0.50
     ) -> List[RetrievedThreadContext]:
         """
-        Tìm kiếm Hybrid kết hợp pgvector (Cosine Distance) và PostgreSQL Full-Text Search (RRF).
+        Tìm kiếm Hybrid kết hợp pgvector và Full-Text Search.
+        Hỗ trợ lọc theo mốc thời gian date_after và lọc đa dạng hóa Diversity.
         """
         vector_str = f"[{','.join(f'{x:.6f}' for x in query_embedding)}]"
-        clean_text_query = (query_text or "").strip()
+        raw_text_query = (query_text or "").strip()
+        # Lọc hư từ (Stopwords) ở tầng Application trước khi đẩy vào FTS
+        clean_text_query = remove_vietnamese_stopwords(raw_text_query)
 
-        # 1. Vector Search Query (Cosine Distance <=>)
+        # 1. Vector Search Query
         vector_query = text("""
             SELECT 
                 t.id AS thread_id,
@@ -110,6 +114,7 @@ class SearchRepository(BaseRepository):
             FROM threads t
             WHERE t.embedding IS NOT NULL
               AND (CAST(:account_id AS uuid) IS NULL OR t.account_id = CAST(:account_id AS uuid))
+              AND (CAST(:date_after AS timestamptz) IS NULL OR t.last_message_at >= CAST(:date_after AS timestamptz))
             ORDER BY similarity_score DESC
             LIMIT :vector_limit;
         """)
@@ -117,11 +122,12 @@ class SearchRepository(BaseRepository):
         vector_res = await self._session.execute(vector_query, {
             "query_vector": vector_str,
             "account_id": account_id,
-            "vector_limit": top_k * 2
+            "date_after": date_after,
+            "vector_limit": top_k * 3
         })
         vector_rows = vector_res.fetchall()
 
-        # 2. Sparse Full-Text Search Query
+        # 2. Sparse Full-Text Search Query (Đã tối ưu hóa Stopwords, Field Weighting và Length Normalization)
         fts_rows = []
         if clean_text_query:
             fts_query = text("""
@@ -131,18 +137,25 @@ class SearchRepository(BaseRepository):
                     t.category,
                     t.summary,
                     t.last_message_at,
-                    ts_rank_cd(e.tsv, plainto_tsquery('simple', immutable_unaccent(:text_query))) AS fts_score
+                    ts_rank_cd(
+                        '{0.1, 0.2, 0.4, 1.0}',
+                        e.tsv,
+                        plainto_tsquery('simple', clean_fts_vietnamese(:text_query)),
+                        32
+                    ) AS fts_score
                 FROM emails e
                 JOIN threads t ON e.thread_id = t.id
-                WHERE e.tsv @@ plainto_tsquery('simple', immutable_unaccent(:text_query))
+                WHERE e.tsv @@ plainto_tsquery('simple', clean_fts_vietnamese(:text_query))
                   AND (CAST(:account_id AS uuid) IS NULL OR t.account_id = CAST(:account_id AS uuid))
+                  AND (CAST(:date_after AS timestamptz) IS NULL OR t.last_message_at >= CAST(:date_after AS timestamptz))
                 ORDER BY fts_score DESC
                 LIMIT :fts_limit;
             """)
             fts_res = await self._session.execute(fts_query, {
                 "text_query": clean_text_query,
                 "account_id": account_id,
-                "fts_limit": top_k * 2
+                "date_after": date_after,
+                "fts_limit": top_k * 3
             })
             fts_rows = fts_res.fetchall()
 
@@ -177,13 +190,25 @@ class SearchRepository(BaseRepository):
 
         sorted_threads = sorted(rrf_scores.keys(), key=lambda t: rrf_scores[t], reverse=True)
 
+        # 4. Diversity Deduplication:
         final_selected_ids: List[UUID] = []
+        subject_counts: Dict[str, int] = {}
+
         for tid in sorted_threads:
-            cosine_score = candidate_meta[tid]["cosine_score"]
+            meta = candidate_meta[tid]
+            clean_subj = re.sub(r"[^\w\s]", "", (meta["subject"] or "").lower()).strip()
+
+            # Mỗi chủ đề lặp lại tối đa 2 lần
+            if subject_counts.get(clean_subj, 0) >= 2:
+                continue
+
+            cosine_score = meta["cosine_score"]
             if cosine_score >= threshold or tid in [r.thread_id for r in fts_rows]:
                 final_selected_ids.append(tid)
+                subject_counts[clean_subj] = subject_counts.get(clean_subj, 0) + 1
             elif len(final_selected_ids) == 0 and cosine_score >= getattr(settings, "RAG_MIN_FALLBACK_THRESHOLD", 0.40):
                 final_selected_ids.append(tid)
+                subject_counts[clean_subj] = subject_counts.get(clean_subj, 0) + 1
 
             if len(final_selected_ids) >= top_k:
                 break
