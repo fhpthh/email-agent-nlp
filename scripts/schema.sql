@@ -10,6 +10,18 @@ $$
 SELECT public.unaccent($1);
 $$;
 
+-- Hàm loại bỏ các hư từ tiếng Việt phổ biến (Stopwords) chống phình GIN index
+CREATE OR REPLACE FUNCTION clean_fts_vietnamese(val text)
+RETURNS text LANGUAGE sql IMMUTABLE PARALLEL SAFE AS
+$$
+SELECT regexp_replace(
+    immutable_unaccent(COALESCE(val, '')),
+    '\m(va|cua|la|thi|ma|o|tai|cho|duoc|bi|boi|do|voi|cac|nhung|cai|chiec|nay|do|kia|ay|tu|den|trong|cung|theo|ve|de)\M',
+    ' ',
+    'gi'
+);
+$$;
+
 -- 1. Tài khoản kết nối Email
 CREATE TABLE IF NOT EXISTS accounts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -51,7 +63,8 @@ CREATE TABLE IF NOT EXISTS emails (
     clean_body TEXT,                       -- Nội dung đã làm sạch, cắt reply
     status TEXT NOT NULL DEFAULT 'PENDING',-- PENDING | PROCESSED | FAILED
     tsv TSVECTOR GENERATED ALWAYS AS (
-        to_tsvector('simple', immutable_unaccent(COALESCE(subject, '') || ' ' || COALESCE(clean_body, '')))
+        setweight(to_tsvector('simple', clean_fts_vietnamese(COALESCE(subject, ''))), 'A') ||
+        setweight(to_tsvector('simple', clean_fts_vietnamese(COALESCE(clean_body, ''))), 'B')
     ) STORED,
     UNIQUE(account_id, provider_message_id)
 );

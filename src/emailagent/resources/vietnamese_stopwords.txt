@@ -1,0 +1,67 @@
+# Danh sách từ dừng tiếng Việt an toàn (Micro-Stopwords) cho Search
+# Chỉ bao gồm hư từ, liên từ, đại từ, giới từ thuần túy.
+# Tuyệt đối không chứa từ phủ định (không, chưa, chẳng) hoặc từ ngữ nghiệp vụ email (gửi, nhận, họp, báo cáo).
+và
+của
+là
+thì
+mà
+ở
+tại
+cho
+được
+bị
+bởi
+do
+với
+nhưng
+tuy
+hoặc
+hay
+các
+những
+cái
+chiếc
+này
+đó
+kia
+ấy
+vậy
+như
+ra
+vào
+từ
+đến
+trong
+cùng
+theo
+về
+lên
+xuống
+qua
+lại
+để
+rồi
+đã
+sẽ
+đang
+nhé
+nha
+ạ
+vui lòng
+xin
+nữa
+khi
+lúc
+nơi
+cũng
+đều
+vì
+bởi vì
+cho nên
+do đó
+vậy nên
+rằng
+rất
+quá
+lắm
