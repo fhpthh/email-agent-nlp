@@ -3,7 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends
 
 from src.emailagent.adapters.llm.factory import get_configured_llm_gateway
-from src.emailagent.db.session import async_session_factory
+from db.session import async_session_factory
 from src.emailagent.ports.llm import LLMGateway
 from src.emailagent.services.analysis import ThreadAnalysisService
 

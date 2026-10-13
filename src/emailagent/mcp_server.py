@@ -9,7 +9,7 @@ load_dotenv(PROJECT_ROOT / ".env")
 
 from mcp.server.mcpserver import MCPServer
 from src.emailagent.adapters.embedding.factory import get_configured_embedding_gateway
-from src.emailagent.db.session import async_session_factory
+from db.session import async_session_factory
 from src.emailagent.services.tools import MailboxToolsService
 
 # Tắt log stdout để không làm nhiễu giao thức JSON-RPC qua stdio của MCP

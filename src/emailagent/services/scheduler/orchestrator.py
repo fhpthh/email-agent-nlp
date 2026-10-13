@@ -9,7 +9,7 @@ from src.emailagent.adapters.embedding.factory import get_configured_embedding_g
 from src.emailagent.adapters.llm.factory import get_configured_llm_gateway
 from src.emailagent.adapters.provider.factory import get_configured_email_provider
 from src.emailagent.config import settings
-from src.emailagent.db.session import async_session_factory
+from db.session import async_session_factory
 from src.emailagent.services.analysis import ThreadAnalysisService
 from src.emailagent.services.embedding import ThreadEmbeddingService
 from src.emailagent.services.ingestion import IngestionService
