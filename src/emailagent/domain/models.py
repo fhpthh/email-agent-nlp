@@ -4,7 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from src.emailagent.domain.enums import EmailCategory, PriorityLevel
+from src.emailagent.domain.enums import EmailCategory, PriorityLevel, QueryIntent
 
 
 # Nhiệm vụ cụ thể cần làm trích xuất từ email
@@ -81,7 +81,7 @@ class RetrievedThreadContext(BaseModel):
 class CitationItem(BaseModel):
     """Thông tin trích dẫn nguồn"""
     thread_id: str = Field(..., description="ID of the referenced thread")
-    subject: str = Field(..., description="Subject of the referenced email")
+    subject: Optional[str] = Field(None, description="Subject populated from database by backend code")
     evidence: str = Field(..., description="Verbatim evidence text supporting the statement")
 
 
@@ -91,15 +91,25 @@ class QAGeneratedAnswer(BaseModel):
     citations: List[CitationItem] = Field(default_factory=list, description="List of source citations used")
 
 
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+
 class ChatQueryRequest(BaseModel):
     """Request tìm kiếm/hỏi đáp hộp thư"""
     query: str = Field(..., min_length=2, description="Natural language question about mailbox")
     account_id: Optional[UUID] = Field(None, description="Optional account ID filter")
+    top_k: Optional[int] = 5
+
+    chat_history: Optional[List[ChatMessage]] = None
+    session_id: Optional[str] = None
 
 
 class ChatQueryResponse(BaseModel):
     """Response trả lời cho client"""
     query: str = Field(..., description="Original user question")
+    rewritten_query: Optional[str] = Field(None, description="Rewritten user question")
     answer: str = Field(..., description="Grounded answer synthesized by AI Agent")
     citations: List[CitationItem] = Field(default_factory=list, description="List of verified citations")
     relevant_threads_count: int = Field(0, description="Number of candidate threads inspected")
@@ -110,3 +120,13 @@ class ThreadEmbeddingSyncResult(BaseModel):
     total_found: int = Field(0, description="Total threads needing embeddings")
     synced: int = Field(0, description="Successfully embedded and saved threads")
     failed: int = Field(0, description="Failed threads count")
+
+
+class QueryFormulationResult(BaseModel):
+    intent: QueryIntent = Field(default=QueryIntent.SEARCH, description="Intent")
+    standalone_query: str = Field(..., description="Standalone query")
+    expanded_keywords: List[str] = Field(default_factory=list, description="Expanded keyword")
+    date_after: Optional[datetime] = Field(None, description="Date after which the query was executed")
+    date_before: Optional[datetime] = Field(None, description="Date before which the query was executed")
+    category: Optional[str] = Field(None, description="Classified email category")
+    analytics_metric: Optional[str] = Field(None, description="Analytics metric")

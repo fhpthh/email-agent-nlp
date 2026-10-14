@@ -28,3 +28,8 @@ class ProcessingStatus(str, Enum):
     PROCESSED = "PROCESSED"
     FAILED = "FAILED"
     SKIPPED = "SKIPPED"
+
+
+class QueryIntent(str, Enum):
+    SEARCH = "search"
+    ANALYTICS = "analytics"

@@ -3,7 +3,7 @@ import pytest
 from sqlalchemy import text
 
 from src.emailagent.adapters.provider.fake import FakeEmailProvider
-from src.emailagent.db.session import async_session_factory
+from db.session import async_session_factory
 from src.emailagent.services.ingestion import IngestionService
 
 

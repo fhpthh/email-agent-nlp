@@ -4,7 +4,7 @@ from datetime import date
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy import text
 from src.emailagent.config import settings
-from src.emailagent.db.session import engine
+from db.session import engine
 from src.emailagent.domain.enums import EmailCategory, PriorityLevel
 from src.emailagent.domain.models import ActionItemModel, ThreadInsightModel
 from src.emailagent.api.main import app

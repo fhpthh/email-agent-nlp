@@ -5,9 +5,9 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from src.emailagent.adapters.db.repositories import EmailRepository
+from src.emailagent.adapters.db.session import async_session_factory
 from src.emailagent.adapters.provider.factory import get_configured_email_provider
 from src.emailagent.config import settings
-from src.emailagent.db.session import async_session_factory
 from src.emailagent.ports.provider import EmailProvider
 from src.emailagent.services.ingestion import IngestionService
 

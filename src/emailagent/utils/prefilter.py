@@ -8,7 +8,6 @@ from src.emailagent.domain.models import ThreadAnalysisItem
 
 
 class BaseFilterRule(ABC):
-
     @property
     @abstractmethod
     def rule_name(self) -> str:
@@ -107,35 +106,12 @@ class AutomatedBillingRule(BaseFilterRule):
         )
 
 
-class SystemNotificationRule(BaseFilterRule):
-    rule_name = "System_Notification"
-    DEFAULT_PATTERN = r"(no-?reply|do-?not-?reply|notifications?|mailer-daemon|system|alert|support-automated)@"
-
-    def __init__(self, pattern: Optional[str] = None):
-        self._pattern = re.compile(pattern or self.DEFAULT_PATTERN, re.IGNORECASE)
-
-    def is_match(self, sender: str, subject: str, body: str) -> bool:
-        return bool(self._pattern.search(sender))
-
-    def build_result(self, thread_id: UUID, sender: str, subject: str) -> ThreadAnalysisItem:
-        return ThreadAnalysisItem(
-            thread_id=str(thread_id),
-            category=EmailCategory.REPORT,
-            is_urgent=False,
-            needs_reply=False,
-            summary=f"Thông báo tự động từ hệ thống ({sender}). Thư không nhận phản hồi.",
-            action_items=[]
-        )
-
-
 class EmailRuleEngine:
-
     def __init__(self, rules: Optional[List[BaseFilterRule]] = None):
         self._rules: List[BaseFilterRule] = rules or [
             OtpVerificationRule(),
             MarketingNewsletterRule(),
             AutomatedBillingRule(),
-            SystemNotificationRule(),
         ]
 
     def add_rule(self, rule: BaseFilterRule) -> None:
