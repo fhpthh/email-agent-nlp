@@ -1,0 +1,7 @@
+domain: rewriter
+current_version: v1.1
+versions:
+  v1.1:
+    system: system_v1.1.jinja2
+    output_schema_version: "2"
+    description: "Separated instructions and evidence; typed runtime context and validated output."

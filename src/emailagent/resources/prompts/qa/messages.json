@@ -1,0 +1,10 @@
+{
+  "vi": {
+    "no_results": "Tôi không tìm thấy email liên quan trong phạm vi tìm kiếm hiện tại.",
+    "insufficient_evidence": "Các đoạn email được cung cấp chưa đủ bằng chứng đã xác minh để trả lời chắc chắn câu hỏi này."
+  },
+  "en": {
+    "no_results": "No related emails were found within the current search scope.",
+    "insufficient_evidence": "The supplied email snippets do not contain enough verified evidence to answer this question reliably."
+  }
+}
