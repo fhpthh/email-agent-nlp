@@ -1,13 +1,13 @@
 import asyncio
 import logging
-from typing import TypeVar, Optional, Type, Sequence
+from typing import TypeVar, Optional, Type
 
 from google import genai
 from google.genai import types
 from pydantic import BaseModel
 
 from src.emailagent.config import settings
-from src.emailagent.ports.llm import LLMGateway, UntrustedPayload
+from src.emailagent.ports.llm import LLMGateway, PromptRequest, log_prompt_call
 
 logger = logging.getLogger("emailagent.adapters.llm.gemini")
 T = TypeVar("T", bound=BaseModel)
@@ -19,23 +19,9 @@ class GeminiLLMGateway(LLMGateway):
         self._model_name = model_name or settings.LLM_MODEL_NAME
         self._client = genai.Client(api_key=self._api_key)
 
-    async def extract_structured(
-        self,
-        schema: Type[T],
-        system_instruction: str,
-        untrusted_contents: Sequence[UntrustedPayload]
-    ) -> T:
-        xml_parts = []
-        for item in untrusted_contents:
-            xml_parts.append(
-                f'<untrusted_message id="{item.content_id}">\n{item.text}\n</untrusted_message>'
-            )
-        prompt_content = "\n\n".join(xml_parts)
-
-        logger.debug(
-            "Calling Gemini (%s) with Structured Output schema: %s for %d payloads",
-            self._model_name, schema.__name__, len(untrusted_contents)
-        )
+    async def extract_structured(self, schema: Type[T], prompt: PromptRequest) -> T:
+        log_prompt_call(prompt, self._model_name, schema)
+        prompt_content = prompt.user_content()
 
         # Cơ chế Auto-Retry 3 lần nếu Google bị nghẽn 503
         max_retries = 3
@@ -47,7 +33,7 @@ class GeminiLLMGateway(LLMGateway):
                     model=self._model_name,
                     contents=prompt_content,
                     config=types.GenerateContentConfig(
-                        system_instruction=system_instruction,
+                        system_instruction=prompt.system_instruction,
                         response_mime_type="application/json",
                         response_schema=schema,
                         temperature=0.1,

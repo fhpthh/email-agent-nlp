@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     ACTIVE_EMAIL_PROVIDER: str = "gmail"
     GMAIL_CREDENTIALS_PATH: str = "credentials.json"
     GMAIL_TOKEN_PATH: str = "token.json"
+    GMAIL_REDIRECT_URI: str = Field(
+        default="http://localhost:8000/api/auth/callback",
+        description="OAuth2 redirect URI registered with Google"
+    )
 
     # Cấu hình AI & LLM Gateway
     LLM_PROVIDER: str = "litellm"
@@ -55,6 +59,11 @@ class Settings(BaseSettings):
     MAX_BACKFILL_DAYS: int = Field(180, description="Max backfill days")
     FALLBACK_OWNER_EMAIL: str = Field("use@example.com", description="Email address for fallback owner")
     FALLBACK_OWNER_NAME: str = Field("Default user", description="Name for fallback owner")
+
+    PROMPT_ANALYSIS_BODY_CHARS: int = Field(6000, ge=1)
+    PROMPT_QA_SNIPPET_CHARS: int = Field(2000, ge=1)
+    PROMPT_HISTORY_MESSAGES: int = Field(4, ge=0)
+    PROMPT_HISTORY_MESSAGE_CHARS: int = Field(4000, ge=1)
 
     # --- Vector Memory & Embedding Configuration ---
     EMBEDDING_PROVIDER: str = Field("litellm", description="Embedding provider: 'gemini' | 'openai'")

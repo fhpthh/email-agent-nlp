@@ -55,7 +55,7 @@ class SearchRepository(BaseRepository):
                     e.thread_id,
                     e.sender,
                     e.date_sent,
-                    SUBSTRING(COALESCE(e.clean_body, '') FROM 1 FOR 800) AS body_snippet,
+                    COALESCE(e.clean_body, '') AS body_snippet,
                     ROW_NUMBER() OVER(PARTITION BY e.thread_id ORDER BY e.date_sent DESC) as rank_idx
                 FROM emails e
                 WHERE e.thread_id = ANY(:thread_ids)
@@ -119,7 +119,7 @@ class SearchRepository(BaseRepository):
                               AND (CAST(:date_after AS timestamptz) IS NULL OR
                                    t.last_message_at >= CAST(:date_after AS timestamptz))
                               AND (CAST(:date_before AS timestamptz) IS NULL OR
-                                   t.last_message_at <= CAST(:date_before AS timestamptz))
+                                   t.last_message_at < CAST(:date_before AS timestamptz))
                               AND (CAST(:category AS text) IS NULL OR t.category = CAST(:category AS text))
                             ORDER BY similarity_score DESC LIMIT :vector_limit;
                             """)
@@ -158,7 +158,7 @@ class SearchRepository(BaseRepository):
                                AND (CAST (:date_after AS timestamptz) IS NULL
                                 OR t.last_message_at >= CAST (:date_after AS timestamptz))
                                AND (CAST (:date_before AS timestamptz) IS NULL
-                                OR t.last_message_at <= CAST (:date_before AS timestamptz))
+                                OR t.last_message_at < CAST (:date_before AS timestamptz))
                                AND (CAST(:category AS text) IS NULL
                                 OR t.category = CAST(:category AS text))
                              ORDER BY fts_score DESC

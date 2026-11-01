@@ -30,15 +30,13 @@ def to_local_datetime(dt: Optional[datetime], tz: ZoneInfo) -> Optional[datetime
 
 
 def _norm(s: str) -> str:
-    """Chuẩn hóa chuỗi để so khớp: Unescape HTML, NFC Unicode, xóa khoảng trắng và lowercase."""
-    s = html.unescape(s or "")
-    s = unicodedata.normalize("NFC", s)
-    return _WS.sub("", s).casefold()
+    """Normalize Unicode and whitespace only; preserve evidence spelling and case."""
+    return _WS.sub(" ", unicodedata.normalize("NFC", s or "")).strip()
 
 
 def verify_and_filter_citations(
         citations: List[CitationItem],
-        thread_texts: Dict[str, str],  # Map: thread_id -> raw snippet thực tế mà LLM đã đọc
+        thread_texts: Dict[str, str | List[str]],  # Map: thread_id -> raw snippet thực tế mà LLM đã đọc
         min_len: int = 8,
         max_len: int = 300,
 ) -> List[CitationItem]:
@@ -46,7 +44,8 @@ def verify_and_filter_citations(
     Xác thực trích dẫn: Đảm bảo evidence thực sự nằm trong raw snippet của chính thread đó.
     Loại bỏ hoàn toàn trích dẫn bịa đặt và trích dẫn gán sai thread.
     """
-    norm_texts = {str(tid): _norm(t) for tid, t in thread_texts.items()}
+    norm_texts = {str(tid): [_norm(part) for part in (text if isinstance(text, list) else [text])]
+                  for tid, text in thread_texts.items()}
     seen, verified = set(), []
 
     for item in citations or []:
@@ -56,7 +55,7 @@ def verify_and_filter_citations(
         if tid not in norm_texts or not (min_len <= len(ev) <= max_len):
             continue
 
-        if ev in norm_texts[tid] and (tid, ev) not in seen:
+        if any(ev in part for part in norm_texts[tid]) and (tid, ev) not in seen:
             seen.add((tid, ev))
             verified.append(item)
 
