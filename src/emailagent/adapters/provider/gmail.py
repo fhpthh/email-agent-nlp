@@ -8,7 +8,6 @@ from typing import List, Optional, Tuple
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
@@ -32,23 +31,36 @@ class GmailProvider(EmailProvider):
         return "gmail"
 
     def _authenticate_google(self):
-        """Xác thực OAuth 2.0 với Google và khởi tạo Gmail Client."""
-        creds = None
-        if self._token_path.exists():
-            creds = Credentials.from_authorized_user_file(str(self._token_path), SCOPES)
+        """Xác thực OAuth 2.0: Tự động refresh ngầm hoặc báo lỗi cần login lại."""
+        if not self._token_path.exists():
+            raise RuntimeError(
+                f"Chưa có Token xác thực tại {self._token_path}. "
+                "Vui lòng truy cập endpoint: http://localhost:8000/api/auth/login để đăng nhập tài khoản Gmail."
+            )
+
+        creds = Credentials.from_authorized_user_file(str(self._token_path), SCOPES)
+
+        if creds and creds.expired and creds.refresh_token:
+            try:
+                logger.info("Access token expired. Refreshing token in background...")
+                creds.refresh(Request())
+
+                # Lưu lại token mới vào file
+                with open(self._token_path, "w", encoding="utf-8") as f:
+                    f.write(creds.to_json())
+                logger.info("Refreshed access token successfully.")
+            except Exception as e:
+                logger.error("Refresh token failed or revoked: %s", e)
+                # Xóa file token hỏng để tránh gọi lại
+                if self._token_path.exists():
+                    self._token_path.unlink()
+                raise RuntimeError(
+                    "Refresh Token của Google đã hết hạn hoặc bị thu hồi. "
+                    "Vui lòng truy cập lại http://localhost:8000/api/auth/login để xác thực lại."
+                ) from e
 
         if not creds or not creds.valid:
-            if creds and creds.expired and creds.refresh_token:
-                logger.info("Refreshing expired Google OAuth token...")
-                creds.refresh(Request())
-            else:
-                logger.info("Initiating Google OAuth login flow...")
-                flow = InstalledAppFlow.from_client_secrets_file(str(self._credentials_path), SCOPES)
-                creds = flow.run_local_server(port=0)
-
-            with open(self._token_path, "w", encoding="utf-8") as token_file:
-                token_file.write(creds.to_json())
-            logger.info("Google OAuth token saved to %s", self._token_path)
+            raise RuntimeError("Token không hợp lệ. Vui lòng truy cập /api/auth/login để đăng nhập.")
 
         return build("gmail", "v1", credentials=creds)
 
