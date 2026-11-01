@@ -38,3 +38,10 @@ class AccountRepository(BaseRepository):
         result = await self._session.execute(query, {"thread_id": thread_id})
         row = result.fetchone()
         return dict(row._mapping) if row else None
+
+    async def get_account_info(self, account_id: UUID) -> Optional[dict]:
+        result = await self._session.execute(text(
+            "SELECT email_address, owner_name, timezone FROM accounts WHERE id = :account_id"
+        ), {"account_id": account_id})
+        row = result.fetchone()
+        return dict(row._mapping) if row else None

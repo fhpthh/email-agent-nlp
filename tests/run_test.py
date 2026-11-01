@@ -4,7 +4,7 @@ from datetime import date
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy import text
 from src.emailagent.config import settings
-from db.session import engine
+from src.emailagent.adapters.db.session import engine
 from src.emailagent.domain.enums import EmailCategory, PriorityLevel
 from src.emailagent.domain.models import ActionItemModel, ThreadInsightModel
 from src.emailagent.api.main import app
@@ -92,7 +92,7 @@ async def main():
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.get("/health")
             assert resp.status_code == 200
-            data = resp.json()
+            data = resp.json()["data"]
             assert data["status"] == "healthy"
         log_pass("5. FastAPI Endpoint /health response: HTTP 200 OK")
     except Exception as e:

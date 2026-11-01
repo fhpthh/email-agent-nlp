@@ -9,8 +9,10 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from src.emailagent.adapters.db.repositories import EmailRepository
 from src.emailagent.config import settings
 from src.emailagent.domain.models import BatchThreadInsightModel, ThreadAnalysisItem
-from src.emailagent.ports.llm import LLMGateway, UntrustedPayload
-from src.emailagent.prompts import format_thread_messages_to_xml, build_analysis_system_instruction
+from src.emailagent.ports.llm import LLMGateway
+from src.emailagent.prompts.analysis import build_analysis_prompt
+from src.emailagent.prompts.contexts import RuntimeContext
+from src.emailagent.prompts.settings import configured_budgets
 from src.emailagent.utils.fingerprint import compute_action_item_fingerprint
 from src.emailagent.utils.prefilter import EmailRuleEngine, default_rule_engine
 
@@ -84,7 +86,6 @@ class ThreadAnalysisService:
         """Gom nhóm nhiều thread phức tạp để gọi LLM 1 lần duy nhất."""
         async with self.session_factory() as session:
             repo = EmailRepository(session)
-            thread_xmls = []
             emails_by_thread = {}
             reference_date = datetime.now(timezone.utc)
 
@@ -93,26 +94,26 @@ class ThreadAnalysisService:
                 if not emails:
                     continue
                 emails_by_thread[str(tid)] = emails
-                reference_date = emails[-1]["date_sent"] or reference_date
-                thread_xmls.append(format_thread_messages_to_xml(tid, emails))
 
-            if not thread_xmls:
+            if not emails_by_thread:
                 return []
 
-            system_instruction = build_analysis_system_instruction(
-                reference_date=reference_date,
-                owner_email=owner_email,
-                owner_name=owner_name,
-                timezone_str=timezone_str
-            )
-            payload = [UntrustedPayload(content_id="batch_chunk", text="\n\n".join(thread_xmls))]
-
-            logger.info("Calling Gemini for batch of %d threads...", len(thread_xmls))
-            batch_result: BatchThreadInsightModel = await self.llm.extract_structured(
-                schema=BatchThreadInsightModel,
-                system_instruction=system_instruction,
-                untrusted_contents=payload
-            )
+            runtime = RuntimeContext.create(reference_date, timezone_str,
+                                            owner_name=owner_name, owner_email=owner_email)
+            budgets = configured_budgets()
+            prompt = build_analysis_prompt(emails_by_thread, runtime, budgets)
+            logger.info("Analyzing batch of %d threads", len(emails_by_thread))
+            batch_result = await self.llm.extract_structured(schema=BatchThreadInsightModel, prompt=prompt)
+            returned_ids = [item.thread_id for item in batch_result.threads]
+            if len(returned_ids) != len(set(returned_ids)) or set(returned_ids) != set(emails_by_thread):
+                raise ValueError("Analysis output IDs do not match input batch")
+            # Validate all items before persisting any result.
+            for item in batch_result.threads:
+                bodies = [(mail.get("clean_body") or "")[:budgets.analysis_body_chars]
+                          for mail in emails_by_thread[item.thread_id]]
+                for action in item.action_items:
+                    if not action.evidence or not any(action.evidence in body for body in bodies):
+                        raise ValueError("Analysis action evidence is not present in input messages")
 
             batch_summary = []
             for item in batch_result.threads:
@@ -129,7 +130,7 @@ class ThreadAnalysisService:
             repo = EmailRepository(session)
             emails = await repo.get_thread_emails(thread_id)
             if not emails:
-                return {"thread_id": str(thread_id), "status": "skipped", "reason": "No emails found"}
+                return {"thread_id": str(thread_id), "status": "skipped", "reason_code": "NO_EMAILS_FOUND"}
 
             # Fast Path
             rule_item = self.rule_engine.evaluate(thread_id, emails)
@@ -151,6 +152,8 @@ class ThreadAnalysisService:
         """Quét và xử lý: Fast-path (Rule) -> Cognitive Path (Gom batch gọi Gemini)."""
         all_details = []
         complex_thread_ids: List[UUID] = []
+        account_batches = {}
+        account_contexts = {}
         rule_count = 0
         succeeded = 0
         failed = 0
@@ -170,11 +173,6 @@ class ThreadAnalysisService:
                     "details": []
                 }
 
-            account_info = await repo.get_thread_account_info(threads[0]["id"])
-            owner_email = account_info["email_address"] if account_info else settings.FALLBACK_OWNER_EMAIL
-            owner_name = account_info["owner_name"] if account_info else settings.FALLBACK_OWNER_NAME
-            timezone_str = account_info["timezone"] if account_info else settings.DEFAULT_TIMEZONE
-
             # BƯỚC 1: Phân loại Fast Path (Rule Engine)
             for thread in threads:
                 tid = thread["id"]
@@ -190,6 +188,15 @@ class ThreadAnalysisService:
                     succeeded += 1
                 else:
                     complex_thread_ids.append(tid)
+                    account_id = thread["account_id"]
+                    if account_id not in account_contexts:
+                        info = await repo.get_thread_account_info(tid) or {}
+                        account_contexts[account_id] = (
+                            info.get("email_address") or settings.FALLBACK_OWNER_EMAIL,
+                            info.get("owner_name") or settings.FALLBACK_OWNER_NAME,
+                            info.get("timezone") or settings.DEFAULT_TIMEZONE,
+                        )
+                    account_batches.setdefault(account_id, []).append(tid)
 
             if rule_count > 0:
                 await session.commit()
@@ -197,19 +204,21 @@ class ThreadAnalysisService:
         # BƯỚC 2: Phân tích Cognitive Path (Gemini Batch)
         total_api_calls = 0
         if complex_thread_ids:
-            chunks = [complex_thread_ids[i:i + batch_size] for i in range(0, len(complex_thread_ids), batch_size)]
-            for chunk in chunks:
+            chunks = [(ids[i:i + batch_size], account_contexts[account_id])
+                      for account_id, ids in account_batches.items()
+                      for i in range(0, len(ids), batch_size)]
+            for chunk, (owner_email, owner_name, timezone_str) in chunks:
+                total_api_calls += 1
                 try:
                     results = await self._process_single_batch(chunk, owner_email, owner_name, timezone_str)
                     all_details.extend(results)
                     succeeded += len(results)
-                    total_api_calls += 1
                     await asyncio.sleep(1)
                 except Exception as exc:
                     failed += len(chunk)
-                    logger.error("Failed to process batch %s: %s", chunk, exc)
+                    logger.exception("Failed to process batch %s", chunk)
                     for tid in chunk:
-                        all_details.append({"thread_id": str(tid), "status": "failed", "error": str(exc)})
+                        all_details.append({"thread_id": str(tid), "status": "failed", "error_code": "ANALYSIS_FAILED"})
 
         return {
             "status": "completed",

@@ -1,8 +1,8 @@
 from datetime import date, datetime
-from typing import List, Optional
+from typing import List, Optional, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, AwareDatetime, model_validator
 
 from src.emailagent.domain.enums import EmailCategory, PriorityLevel, QueryIntent
 
@@ -85,9 +85,14 @@ class CitationItem(BaseModel):
     evidence: str = Field(..., description="Verbatim evidence text supporting the statement")
 
 
+class AnalyticsGeneratedAnswer(BaseModel):
+    answer: str
+
+
 class QAGeneratedAnswer(BaseModel):
     """Kết quả Q&A do LLM sinh ra"""
     answer: str = Field(..., description="Detailed answer addressing user question")
+    evidence_sufficient: bool = Field(..., description="Whether supplied snippets support the answer")
     citations: List[CitationItem] = Field(default_factory=list, description="List of source citations used")
 
 
@@ -126,7 +131,17 @@ class QueryFormulationResult(BaseModel):
     intent: QueryIntent = Field(default=QueryIntent.SEARCH, description="Intent")
     standalone_query: str = Field(..., description="Standalone query")
     expanded_keywords: List[str] = Field(default_factory=list, description="Expanded keyword")
-    date_after: Optional[datetime] = Field(None, description="Date after which the query was executed")
-    date_before: Optional[datetime] = Field(None, description="Date before which the query was executed")
-    category: Optional[str] = Field(None, description="Classified email category")
-    analytics_metric: Optional[str] = Field(None, description="Analytics metric")
+    date_after: Optional[AwareDatetime] = Field(None, description="Inclusive start of the requested period")
+    date_before: Optional[AwareDatetime] = Field(None, description="Exclusive end of the requested period")
+    category: Optional[EmailCategory] = Field(None, description="Requested category filter")
+    analytics_metric: Optional[Literal["count_threads", "count_tasks"]] = None
+
+    @model_validator(mode="after")
+    def validate_plan(self):
+        if self.date_after and self.date_before and self.date_after >= self.date_before:
+            raise ValueError("Date range must have a positive duration")
+        if self.intent == QueryIntent.ANALYTICS and self.analytics_metric is None:
+            raise ValueError("Analytics requests require a metric")
+        if self.intent == QueryIntent.SEARCH and self.analytics_metric is not None:
+            raise ValueError("Search requests must not specify an analytics metric")
+        return self

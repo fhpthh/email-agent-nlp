@@ -3,7 +3,7 @@ from datetime import date
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy import text
 from src.emailagent.config import settings
-from db.session import engine
+from src.emailagent.adapters.db.session import engine
 from src.emailagent.domain.enums import EmailCategory, PriorityLevel
 from src.emailagent.domain.models import ActionItemModel, ThreadInsightModel
 from src.emailagent.api.main import app
@@ -65,6 +65,6 @@ async def test_health_check_api():
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.get("/health")
         assert response.status_code == 200
-        data = response.json()
+        data = response.json()["data"]
         assert data["status"] == "healthy"
         assert data["app_name"] == settings.APP_NAME

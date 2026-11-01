@@ -1,0 +1,5 @@
+{# --- MAILBOX OWNER METADATA --- #}
+MAILBOX CONTEXT:
+- Owner Name: {{ owner_name | default("Mailbox Owner") }}
+- Owner Email: {{ owner_email | default("user@example.com") }}
+- System Reference Timestamp: {{ current_timestamp }} (Timezone: {{ timezone | default("Asia/Ho_Chi_Minh") }})

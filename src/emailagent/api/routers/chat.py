@@ -1,5 +1,6 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request, Query
 
+from src.emailagent.api.schemas.common import SuccessResponse, success
 from src.emailagent.adapters.db.session import async_session_factory
 from src.emailagent.adapters.embedding.factory import get_configured_embedding_gateway
 from src.emailagent.adapters.llm.factory import get_configured_llm_gateway
@@ -36,20 +37,22 @@ def get_qa_service(
     )
 
 
-@router.post("/sync-embeddings", response_model=ThreadEmbeddingSyncResult, summary="Sync vector for thread don't have embedding")
+@router.post("/sync-embeddings", response_model=SuccessResponse[ThreadEmbeddingSyncResult], summary="Synchronize missing thread embeddings")
 async def sync_embeddings(
-        limit: int = 50,
-        batch_size: int = 10,
+        request: Request,
+        limit: int = Query(50, ge=1, le=1000),
+        batch_size: int = Query(10, ge=1, le=100),
         service: ThreadEmbeddingService = Depends(get_embedding_service)
 ):
     """Scan and compute vector embeddings for summarized threads using text-embedding-004."""
-    return await service.sync_pending_embeddings(limit=limit, batch_size=batch_size)
+    return success(request, await service.sync_pending_embeddings(limit=limit, batch_size=batch_size))
 
 
-@router.post("/ask", response_model=ChatQueryResponse, summary="Q&A email")
+@router.post("/ask", response_model=SuccessResponse[ChatQueryResponse], summary="Q&A email")
 async def ask_mailbox(
-        request: ChatQueryRequest,
+        payload: ChatQueryRequest,
+        request: Request,
         service: MailboxQAService = Depends(get_qa_service)
 ):
     """Ask natural language questions about emails, tasks, deadlines, and receive grounded answers with citations."""
-    return await service.ask_mailbox(request=request)
+    return success(request, await service.ask_mailbox(request=payload))

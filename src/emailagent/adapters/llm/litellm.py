@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import Optional, Sequence, Type
+from typing import Optional, Type
 
 from openai import (
     APIConnectionError,
@@ -11,7 +11,7 @@ from openai import (
 )
 
 from src.emailagent.config import settings
-from src.emailagent.ports.llm import LLMGateway, T, UntrustedPayload
+from src.emailagent.ports.llm import LLMGateway, T, PromptRequest, log_prompt_call
 
 logger = logging.getLogger("emailagent.adapters.llm")
 
@@ -58,22 +58,11 @@ class LiteLLMGateway(LLMGateway):
         clean = url.strip().rstrip("/")
         return clean if clean.endswith("/v1") else f"{clean}/v1"
 
-    def _render_payloads(self, payloads: Sequence[UntrustedPayload]) -> str:
-        return "\n\n".join(
-            f'<untrusted_message id="{item.content_id}">\n{item.text}\n</untrusted_message>'
-            for item in payloads
-        )
-
-    async def extract_structured(
-        self,
-        schema: Type[T],
-        system_instruction: str,
-        untrusted_contents: Sequence[UntrustedPayload],
-    ) -> T:
-        prompt_content = self._render_payloads(untrusted_contents)
+    async def extract_structured(self, schema: Type[T], prompt: PromptRequest) -> T:
+        log_prompt_call(prompt, self.model_name, schema)
         messages = [
-            {"role": "system", "content": system_instruction},
-            {"role": "user", "content": prompt_content},
+            {"role": "system", "content": prompt.system_instruction},
+            {"role": "user", "content": prompt.user_content()},
         ]
 
         last_exception: Optional[Exception] = None
@@ -113,7 +102,7 @@ class LiteLLMGateway(LLMGateway):
                     raise last_exception
 
             except Exception as exc:
-                logger.error("LLM_FATAL_ERROR: type=%s detail=%s", type(exc).__name__, str(exc))
+                logger.error("LLM_FATAL_ERROR: type=%s", type(exc).__name__)
                 raise exc
 
         if last_exception:

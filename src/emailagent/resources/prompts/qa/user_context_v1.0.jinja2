@@ -1,0 +1,28 @@
+{# --- 1. METADATA CONTEXT --- #}
+{% include "components/owner_context.jinja2" %}
+RETRIEVAL METRICS:
+- Total matching threads in context: {{ total_matched_count | default(threads | length) }} (Period: {{ earliest_date | default("N/A") }} to {{ latest_date | default("N/A") }}).
+
+{# --- 2. EVIDENCE CONTEXT (LONG CONTEXT FIRST IN XML SANDBOX) --- #}
+<mailbox_context>
+{% for thread in threads %}
+  <thread id="{{ thread.safe_id }}" category="{{ thread.safe_category }}">
+    Subject: {{ thread.safe_subject }}
+    Summary: {{ thread.safe_summary }}
+    {% if thread.messages %}
+    <recent_messages>
+    {% for msg in thread.messages %}
+      <message id="{{ msg.safe_id }}">
+        Sender: {{ msg.safe_sender }} | Date: {{ msg.date_str }}
+        Snippet: {{ msg.clean_snippet }}
+      </message>
+    {% endfor %}
+    </recent_messages>
+    {% endif %}
+  </thread>
+{% endfor %}
+</mailbox_context>
+
+{# --- 3. USER QUESTION AT THE VERY END (RECENCY EFFECT) --- #}
+USER QUESTION:
+"{{ user_query }}"

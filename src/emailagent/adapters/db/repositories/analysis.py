@@ -179,13 +179,15 @@ class AnalysisRepository(BaseRepository):
                          FROM action_items a
                                   JOIN threads t ON t.id = a.thread_id
                          WHERE (CAST(:account_id AS uuid) IS NULL OR t.account_id = CAST(:account_id AS uuid))
+                           AND (CAST(:category AS text) IS NULL OR t.category = CAST(:category AS text))
                            AND (CAST(:date_after AS timestamptz) IS NULL OR
                                 a.created_at >= CAST(:date_after AS timestamptz))
                            AND (CAST(:date_before AS timestamptz) IS NULL OR
-                                a.created_at <= CAST(:date_before AS timestamptz));
+                                a.created_at < CAST(:date_before AS timestamptz));
                          """)
             res = await self._session.execute(query, {
                 "account_id": account_id,
+                "category": category,
                 "date_after": date_after,
                 "date_before": date_before
             })
@@ -203,7 +205,7 @@ class AnalysisRepository(BaseRepository):
                            AND (CAST(:date_after AS timestamptz) IS NULL OR
                                 t.last_message_at >= CAST(:date_after AS timestamptz))
                            AND (CAST(:date_before AS timestamptz) IS NULL OR
-                                t.last_message_at <= CAST(:date_before AS timestamptz));
+                                t.last_message_at < CAST(:date_before AS timestamptz));
                          """)
             res = await self._session.execute(query, {
                 "account_id": account_id,

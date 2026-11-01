@@ -1,0 +1,74 @@
+{
+  "INTERNAL_ERROR": {
+    "title": "Lỗi hệ thống",
+    "detail": "Đã xảy ra lỗi không mong đợi. Vui lòng cung cấp mã request khi liên hệ hỗ trợ."
+  },
+  "VALIDATION_ERROR": {
+    "title": "Dữ liệu không hợp lệ",
+    "detail": "Một hoặc nhiều trường trong yêu cầu không hợp lệ."
+  },
+  "AUTH_NOT_CONFIGURED": {
+    "title": "Chưa cấu hình xác thực",
+    "detail": "Xác thực Google chưa được cấu hình."
+  },
+  "AUTH_MISSING_CODE": {
+    "title": "Thiếu mã xác thực",
+    "detail": "Callback từ Google không chứa mã xác thực."
+  },
+  "AUTH_INVALID_STATE": {
+    "title": "Phiên xác thực không hợp lệ",
+    "detail": "Phiên xác thực không hợp lệ hoặc đã hết hạn. Vui lòng đăng nhập lại."
+  },
+  "AUTH_DENIED": {
+    "title": "Quyền truy cập bị từ chối",
+    "detail": "Yêu cầu cấp quyền Google đã bị từ chối. Vui lòng đăng nhập lại."
+  },
+  "AUTH_SCOPE_REQUIRED": {
+    "title": "Thiếu quyền đọc Gmail",
+    "detail": "Vui lòng đăng nhập lại và cấp quyền đọc Gmail."
+  },
+  "AUTH_EXCHANGE_FAILED": {
+    "title": "Xác thực thất bại",
+    "detail": "Không thể hoàn tất xác thực với Google. Vui lòng đăng nhập lại."
+  },
+  "AUTH_TOKEN_INVALID": {
+    "title": "Thông tin xác thực không hợp lệ",
+    "detail": "Không thể đọc thông tin xác thực Gmail đã lưu. Vui lòng kết nối lại tài khoản."
+  },
+  "ANALYSIS_FAILED": {
+    "title": "Phân tích thất bại",
+    "detail": "Không thể phân tích chuỗi thư này."
+  },
+  "HTTP_ERROR": {
+    "title": "Yêu cầu thất bại",
+    "detail": "Không thể hoàn tất yêu cầu."
+  },
+  "HTTP_401": {
+    "title": "Cần xác thực",
+    "detail": "Bạn cần xác thực để truy cập tài nguyên này."
+  },
+  "HTTP_403": {
+    "title": "Không có quyền truy cập",
+    "detail": "Bạn không có quyền truy cập tài nguyên này."
+  },
+  "HTTP_404": {
+    "title": "Không tìm thấy tài nguyên",
+    "detail": "Không tìm thấy tài nguyên được yêu cầu."
+  },
+  "HTTP_405": {
+    "title": "Phương thức không được hỗ trợ",
+    "detail": "Tài nguyên này không hỗ trợ phương thức HTTP đã sử dụng."
+  },
+  "HTTP_429": {
+    "title": "Quá nhiều yêu cầu",
+    "detail": "Vui lòng thử lại sau."
+  },
+  "validation.required": {
+    "title": "",
+    "detail": "Trường này là bắt buộc."
+  },
+  "validation.invalid": {
+    "title": "",
+    "detail": "Giá trị của trường này không hợp lệ."
+  }
+}
