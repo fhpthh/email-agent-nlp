@@ -1,0 +1,74 @@
+{
+  "INTERNAL_ERROR": {
+    "title": "Internal server error",
+    "detail": "An unexpected error occurred. Contact support with the request ID."
+  },
+  "VALIDATION_ERROR": {
+    "title": "Validation failed",
+    "detail": "One or more request fields are invalid."
+  },
+  "AUTH_NOT_CONFIGURED": {
+    "title": "Authentication unavailable",
+    "detail": "Google authentication is not configured."
+  },
+  "AUTH_MISSING_CODE": {
+    "title": "Missing authorization code",
+    "detail": "The Google callback did not include an authorization code."
+  },
+  "AUTH_INVALID_STATE": {
+    "title": "Invalid authentication session",
+    "detail": "The authentication session is invalid or expired. Please sign in again."
+  },
+  "AUTH_DENIED": {
+    "title": "Authorization denied",
+    "detail": "Google authorization was declined. Please sign in again."
+  },
+  "AUTH_SCOPE_REQUIRED": {
+    "title": "Gmail permission required",
+    "detail": "Please sign in again and grant permission to read Gmail."
+  },
+  "AUTH_EXCHANGE_FAILED": {
+    "title": "Authentication failed",
+    "detail": "Unable to complete authorization with Google. Please sign in again."
+  },
+  "AUTH_TOKEN_INVALID": {
+    "title": "Invalid stored credentials",
+    "detail": "Stored Gmail credentials cannot be read. Please reconnect your account."
+  },
+  "ANALYSIS_FAILED": {
+    "title": "Analysis failed",
+    "detail": "Unable to analyze this thread."
+  },
+  "HTTP_ERROR": {
+    "title": "Request failed",
+    "detail": "The request could not be completed."
+  },
+  "HTTP_401": {
+    "title": "Authentication required",
+    "detail": "Authentication is required to access this resource."
+  },
+  "HTTP_403": {
+    "title": "Permission denied",
+    "detail": "You do not have permission to access this resource."
+  },
+  "HTTP_404": {
+    "title": "Resource not found",
+    "detail": "The requested resource was not found."
+  },
+  "HTTP_405": {
+    "title": "Method not allowed",
+    "detail": "This HTTP method is not supported for this resource."
+  },
+  "HTTP_429": {
+    "title": "Too many requests",
+    "detail": "Please retry later."
+  },
+  "validation.required": {
+    "title": "",
+    "detail": "This field is required."
+  },
+  "validation.invalid": {
+    "title": "",
+    "detail": "This field has an invalid value."
+  }
+}
